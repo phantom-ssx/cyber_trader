@@ -1,0 +1,33 @@
+# ─── Live Trading Configuration ──────────────────────────────────────────────
+# ⚠️  WARNING: This places REAL orders with REAL money on OKX mainnet!
+# Run: python scripts/run_live.py --config config/live_trading.yaml --confirm
+
+live:
+  instrument_ids:
+    - "ETH-USDT-SWAP.OKX"
+  bar_types:
+    - "ETH-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL"
+  log_level: "INFO"
+
+strategy:
+  path: "cyber_trader.strategies.trend_following:TrendFollowingStrategy"
+  config_path: "cyber_trader.strategies.trend_following:TrendFollowingConfig"
+  params:
+    instrument_id: "ETH-USDT-SWAP.OKX"
+    bar_type: "ETH-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL"
+    ema_fast: 9
+    ema_slow: 21
+    macd_fast: 12
+    macd_slow: 26
+    ema_weight: 0.6
+    macd_weight: 0.4
+    # Conservative risk for live trading
+    risk_per_trade: 0.005        # 0.5% risk per trade
+    stop_loss_pct: 0.02
+    take_profit_pct: 0.04
+    leverage: 1.0
+    max_drawdown_pct: 0.10       # Shut down at 10% drawdown
+    max_daily_loss_pct: 0.03     # 3% daily loss limit
+    long_threshold: 0.35         # Higher conviction required for live
+    short_threshold: -0.35
+    enable_notifications: true

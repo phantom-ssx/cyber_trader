@@ -1,0 +1,75 @@
+# ─── Backtest Configuration ──────────────────────────────────────────────────
+# Run: python scripts/run_backtest.py --config config/backtest.yaml
+
+backtest:
+  # Trading pair and bar type
+  # instrument_id format: {BASE}-{QUOTE}-SWAP.OKX  (perpetual)  |  {BASE}-{QUOTE}.OKX (spot)
+  instrument_id: "ETH-USDT-SWAP.OKX"
+  bar_type: "ETH-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL"
+
+  # Time range
+  start: "2024-01-01"
+  end: "2024-12-31"
+
+  # Venue / account simulation
+  venue: "OKX"
+  starting_balance: 10000.0
+  currency: "USDT"
+
+  # Slippage & latency simulation
+  fill_model_slippage_factor: 0.0001
+  latency_model_base_secs: 0.001
+
+  log_level: "WARNING"
+
+# ─── Strategy Selection ───────────────────────────────────────────────────────
+# Uncomment ONE strategy block (or modify to run all three and compare)
+
+strategy:
+  # ── Trend Following ──
+  path: "cyber_trader.strategies.trend_following:TrendFollowingStrategy"
+  config_path: "cyber_trader.strategies.trend_following:TrendFollowingConfig"
+  params:
+    ema_fast: 9
+    ema_slow: 21
+    macd_fast: 12
+    macd_slow: 26
+    ema_weight: 0.6
+    macd_weight: 0.4
+    risk_per_trade: 0.01
+    stop_loss_pct: 0.02
+    take_profit_pct: 0.04
+    leverage: 1.0
+    long_threshold: 0.25
+    short_threshold: -0.25
+
+  # ── Mean Reversion (comment/uncomment to switch) ──
+  # path: "cyber_trader.strategies.mean_reversion:MeanReversionStrategy"
+  # config_path: "cyber_trader.strategies.mean_reversion:MeanReversionConfig"
+  # params:
+  #   bb_period: 20
+  #   bb_k: 2.0
+  #   rsi_period: 14
+  #   bb_weight: 0.55
+  #   rsi_weight: 0.45
+  #   risk_per_trade: 0.01
+  #   stop_loss_pct: 0.015
+  #   take_profit_pct: 0.03
+  #   leverage: 1.0
+  #   long_threshold: 0.35
+  #   short_threshold: -0.35
+
+  # ── Momentum (comment/uncomment to switch) ──
+  # path: "cyber_trader.strategies.momentum:MomentumStrategy"
+  # config_path: "cyber_trader.strategies.momentum:MomentumConfig"
+  # params:
+  #   mom_period: 10
+  #   vol_period: 20
+  #   mom_weight: 0.7
+  #   vol_weight: 0.3
+  #   risk_per_trade: 0.01
+  #   stop_loss_pct: 0.02
+  #   take_profit_pct: 0.05
+  #   leverage: 1.0
+  #   long_threshold: 0.30
+  #   short_threshold: -0.30

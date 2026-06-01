@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cyber-trader"
+version = "0.1.0"
+description = "Quantitative crypto trading system based on nautilus_trader (OKX, ETH/BTC futures)"
+requires-python = ">=3.11"
+dependencies = [
+    "nautilus_trader>=1.208.0",
+    "ccxt>=4.3.0",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "httpx>=0.27",
+    "click>=8.1",
+    "pyyaml>=6.0",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "pyarrow>=16.0",
+    "loguru>=0.7",
+    "rich>=13.7",
+    "asyncpg>=0.29",
+    "sqlalchemy[asyncio]>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "jupyter>=1.0",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "ipykernel>=6.0",
+]
+
+[project.scripts]
+ct-download = "scripts.download_data:main"
+ct-backtest = "scripts.run_backtest:main"
+ct-paper    = "scripts.run_paper:main"
+ct-live     = "scripts.run_live:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cyber_trader*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

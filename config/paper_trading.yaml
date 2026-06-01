@@ -1,0 +1,32 @@
+# ─── Paper Trading Configuration ─────────────────────────────────────────────
+# Connects to OKX demo environment (is_demo=True)
+# Run: python scripts/run_paper.py --config config/paper_trading.yaml
+
+paper:
+  instrument_ids:
+    - "ETH-USDT-SWAP.OKX"
+    - "BTC-USDT-SWAP.OKX"
+  bar_types:
+    - "ETH-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL"
+    - "BTC-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL"
+  log_level: "INFO"
+
+strategy:
+  path: "cyber_trader.strategies.trend_following:TrendFollowingStrategy"
+  config_path: "cyber_trader.strategies.trend_following:TrendFollowingConfig"
+  params:
+    instrument_id: "ETH-USDT-SWAP.OKX"
+    bar_type: "ETH-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL"
+    ema_fast: 9
+    ema_slow: 21
+    macd_fast: 12
+    macd_slow: 26
+    ema_weight: 0.6
+    macd_weight: 0.4
+    risk_per_trade: 0.01
+    stop_loss_pct: 0.02
+    take_profit_pct: 0.04
+    leverage: 1.0
+    long_threshold: 0.25
+    short_threshold: -0.25
+    enable_notifications: true
