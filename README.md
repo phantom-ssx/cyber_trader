@@ -13,6 +13,7 @@
 | 飞书通知 | 入场信号 + 绩效指标推送到飞书群机器人 |
 | 多因子 | EMA 交叉 / MACD / RSI / 布林带 / 动量 / 量价动量 |
 | 风控 | 仓位百分比、止损/止盈、最大回撤、日亏损限额 |
+| K 线可视化 | mplfinance 绘制 K 线 + EMA + MACD，输出高清 PNG |
 
 ## 快速开始
 
@@ -22,6 +23,9 @@
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
+
+# K 线可视化（可选）
+pip install mplfinance
 ```
 
 ### 2. 配置
@@ -81,7 +85,20 @@ python scripts/run_live.py --config config/live_trading.yaml --confirm
 docker compose --profile live up live-trader
 ```
 
-### 7. Jupyter 分析
+### 7. K 线可视化
+
+```bash
+# 绘制最近 200 根 K 线（主图：K线+EMA，副图：成交量+MACD），输出 PNG
+python scripts/plot_kline.py
+
+# 自定义 K 线数量和输出路径
+python scripts/plot_kline.py --bars 500 --out charts/eth.png
+
+# 指定 bar type（默认 1 分钟）
+python scripts/plot_kline.py --bar-type "ETH-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL" --bars 200
+```
+
+### 8. Jupyter 分析
 
 ```bash
 jupyter notebook notebooks/backtest_analysis.ipynb
@@ -101,7 +118,7 @@ cyber_trader/
 │   ├── risk/           # 风控管理（仓位/止损/回撤）
 │   ├── notifications/  # 飞书 Webhook
 │   └── engines/        # 回测 / 模拟盘 / 实盘 引擎
-├── scripts/            # CLI 入口
+├── scripts/            # CLI 入口（download / backtest / paper / live / plot_kline）
 ├── config/             # YAML 配置文件
 ├── notebooks/          # Jupyter 分析
 ├── tests/              # 单元测试
