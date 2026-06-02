@@ -68,7 +68,7 @@ def _make_instrument(
         instrument_id = InstrumentId(Symbol(native), VENUE)
         return CryptoPerpetual(
             instrument_id=instrument_id,
-            native_symbol=Symbol(native),
+            raw_symbol=Symbol(native),
             base_currency=base,
             quote_currency=quote,
             settlement_currency=settle,
@@ -96,7 +96,7 @@ def _make_instrument(
         instrument_id = InstrumentId(Symbol(symbol), VENUE)
         return CurrencyPair(
             instrument_id=instrument_id,
-            native_symbol=Symbol(symbol),
+            raw_symbol=Symbol(symbol),
             base_currency=base,
             quote_currency=quote,
             price_precision=meta["price_precision"],
