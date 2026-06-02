@@ -2,6 +2,7 @@
 
 Usage:
   python scripts/run_backtest.py --config config/backtest.yaml
+  python scripts/run_backtest.py --config config/backtest.yaml --timeframe 15m
   python scripts/run_backtest.py --config config/backtest.yaml --start 2024-06-01 --end 2024-12-31
 """
 
@@ -16,6 +17,7 @@ from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from cyber_trader.data.okx_downloader import SUPPORTED_TIMEFRAMES
 from cyber_trader.engines.backtest import BacktestConfig, BacktestRunner
 
 
@@ -26,12 +28,14 @@ def _load_config(path: str) -> dict:
 
 @click.command()
 @click.option("--config", required=True, type=click.Path(exists=True), help="Path to backtest YAML")
+@click.option("--timeframe", default=None, type=click.Choice(SUPPORTED_TIMEFRAMES), help="Override timeframe")
 @click.option("--start", default=None, help="Override start date")
 @click.option("--end", default=None, help="Override end date")
 @click.option("--balance", default=None, type=float, help="Override starting balance (USDT)")
 @click.option("--log-level", default=None, type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"]))
 def main(
     config: str,
+    timeframe: str | None,
     start: str | None,
     end: str | None,
     balance: float | None,
@@ -47,7 +51,7 @@ def main(
         config_path=strat["config_path"],
         strategy_config=strat.get("params", {}),
         instrument_id=bt["instrument_id"],
-        bar_type=bt["bar_type"],
+        timeframe=timeframe or bt["timeframe"],
         start=start or bt["start"],
         end=end or bt["end"],
         venue=bt.get("venue", "OKX"),

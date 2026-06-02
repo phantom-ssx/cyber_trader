@@ -35,6 +35,20 @@ _TIMEFRAME_MAP: dict[str, tuple[BarAggregation, int]] = {
     "1d":  (BarAggregation.DAY, 1),
 }
 
+SUPPORTED_TIMEFRAMES = list(_TIMEFRAME_MAP.keys())
+
+
+def timeframe_to_bar_type(instrument_id: str, timeframe: str) -> str:
+    """Convert OKX timeframe string to a nautilus bar type string.
+
+    e.g. timeframe_to_bar_type("ETH-USDT-SWAP.OKX", "1h")
+         -> "ETH-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL"
+    """
+    if timeframe not in _TIMEFRAME_MAP:
+        raise ValueError(f"Unsupported timeframe '{timeframe}'. Choose from: {SUPPORTED_TIMEFRAMES}")
+    aggregation, step = _TIMEFRAME_MAP[timeframe]
+    return f"{instrument_id}-{step}-{aggregation.name}-LAST-EXTERNAL"
+
 # Instrument metadata defaults for common pairs
 _INSTRUMENT_META: dict[str, dict] = {
     "ETH": {"price_precision": 2, "size_precision": 4, "tick_size": "0.01", "lot_size": "0.0001"},

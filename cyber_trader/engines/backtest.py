@@ -25,6 +25,7 @@ from nautilus_trader.model.identifiers import Venue
 
 from cyber_trader.config import get_settings
 from cyber_trader.data.catalog import get_catalog
+from cyber_trader.data.okx_downloader import SUPPORTED_TIMEFRAMES, timeframe_to_bar_type
 
 
 @dataclass
@@ -36,7 +37,7 @@ class BacktestConfig:
     strategy_config: dict[str, Any]         # kwargs for the strategy config
 
     instrument_id: str                      # e.g. "ETH-USDT-SWAP.OKX"
-    bar_type: str                           # e.g. "ETH-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL"
+    timeframe: str                          # e.g. "1m", "15m", "1h", "4h", "1d"
 
     start: str                              # ISO datetime e.g. "2024-01-01"
     end: str                                # ISO datetime e.g. "2024-12-31"
@@ -50,6 +51,17 @@ class BacktestConfig:
     latency_model_base_secs: float = 0.001
 
     log_level: str = "WARNING"
+
+    # Derived — set automatically in __post_init__
+    bar_type: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        if self.timeframe not in SUPPORTED_TIMEFRAMES:
+            raise ValueError(
+                f"Unsupported timeframe '{self.timeframe}'. "
+                f"Choose from: {SUPPORTED_TIMEFRAMES}"
+            )
+        self.bar_type = timeframe_to_bar_type(self.instrument_id, self.timeframe)
 
 
 class BacktestRunner:
@@ -79,6 +91,13 @@ class BacktestRunner:
             engine=BacktestEngineConfig(
                 logging=LoggingConfig(log_level=cfg.log_level),
                 risk_engine=RiskEngineConfig(bypass=False),
+                strategies=[
+                    ImportableStrategyConfig(
+                        strategy_path=cfg.strategy_path,
+                        config_path=cfg.config_path,
+                        config=strat_kwargs,
+                    )
+                ],
             ),
             venues=[
                 BacktestVenueConfig(
@@ -93,16 +112,9 @@ class BacktestRunner:
                     catalog_path=str(self._settings.data_catalog_path),
                     data_cls=Bar,
                     instrument_id=cfg.instrument_id,
-                    bar_spec=cfg.bar_type.split("-", maxsplit=4)[2],  # step spec portion
+                    bar_types=[cfg.bar_type],
                     start_time=cfg.start,
                     end_time=cfg.end,
-                )
-            ],
-            strategies=[
-                ImportableStrategyConfig(
-                    strategy_path=cfg.strategy_path,
-                    config_path=cfg.config_path,
-                    config=strat_kwargs,
                 )
             ],
         )
@@ -125,13 +137,19 @@ class BacktestResult:
             return {}
         r = self.run_results[0]
         try:
+            pnls = r.stats_pnls.get("USDT", {})
+            rets = r.stats_returns
             return {
-                "total_return_pct": r.stats_pnls.get("USDT", {}).get("PnL%", 0),
-                "sharpe_ratio":     r.stats_returns.get("Sharpe Ratio", 0),
-                "max_drawdown_pct": r.stats_returns.get("Max Drawdown", 0),
-                "win_rate":         r.stats_pnls.get("USDT", {}).get("Win Rate", 0),
-                "total_trades":     r.stats_pnls.get("USDT", {}).get("Total Trades", 0),
-                "profit_factor":    r.stats_pnls.get("USDT", {}).get("Profit Factor", 0),
+                "total_return_pct": pnls.get("PnL% (total)", 0),
+                "total_pnl":        pnls.get("PnL (total)", 0),
+                "sharpe_ratio":     rets.get("Sharpe Ratio (252 days)", 0),
+                "sortino_ratio":    rets.get("Sortino Ratio (252 days)", 0),
+                "profit_factor":    rets.get("Profit Factor", 0),
+                "win_rate":         pnls.get("Win Rate", 0),
+                "avg_winner":       pnls.get("Avg Winner", 0),
+                "avg_loser":        pnls.get("Avg Loser", 0),
+                "expectancy":       pnls.get("Expectancy", 0),
+                "total_orders":     r.total_orders,
             }
         except Exception as e:
             logger.warning(f"Could not extract stats: {e}")

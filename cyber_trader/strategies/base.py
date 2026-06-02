@@ -10,7 +10,7 @@ from nautilus_trader.model.data import Bar, BarType
 from nautilus_trader.model.enums import OrderSide, TimeInForce
 from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.model.instruments import Instrument
-from nautilus_trader.model.objects import Quantity
+from nautilus_trader.model.objects import Currency, Quantity
 from nautilus_trader.trading.strategy import Strategy
 
 from cyber_trader.config import get_settings
@@ -22,6 +22,7 @@ from cyber_trader.risk.manager import RiskConfig, RiskManager
 class BaseStrategyConfig(StrategyConfig, frozen=True):
     instrument_id: str
     bar_type: str
+    currency: str = "USDT"
 
     # Risk
     risk_per_trade: float = 0.01
@@ -124,17 +125,18 @@ class BaseStrategy(Strategy):
     def _update_risk_equity(self) -> None:
         account = self.cache.account_for_venue(self._instrument_id.venue)
         if account:
-            equity = float(account.balance_total().as_double())
+            currency = Currency.from_str(self.cfg.currency)
+            equity = float(account.balance_total(currency).as_double())
             self._risk.init_equity(equity)
             self._risk.update_equity(equity)
 
     def _process_signal(self, bar: Bar) -> None:
         score = self._factor_engine.composite_score()
-        position = self.cache.position_for_order(None)  # simplified; subclass may override
         net_qty = self._net_position()
 
         account = self.cache.account_for_venue(self._instrument_id.venue)
-        equity = float(account.balance_total().as_double()) if account else 1_000_000.0
+        currency = Currency.from_str(self.cfg.currency)
+        equity = float(account.balance_total(currency).as_double()) if account else 1_000_000.0
 
         allowed, reason = self._risk.can_trade(equity)
 
@@ -157,7 +159,8 @@ class BaseStrategy(Strategy):
         positions = self.cache.positions_open(instrument_id=self._instrument_id)
         net = 0.0
         for p in positions:
-            net += p.signed_qty.as_double()
+            sq = p.signed_qty
+            net += float(sq) if not isinstance(sq, float) else sq
         return net
 
     def _enter_long(self, bar: Bar, score: float, equity: float) -> None:
