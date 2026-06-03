@@ -36,10 +36,11 @@ dev = [
 ]
 
 [project.scripts]
-ct-download = "scripts.download_data:main"
-ct-backtest = "scripts.run_backtest:main"
-ct-paper    = "scripts.run_paper:main"
-ct-live     = "scripts.run_live:main"
+ct-download     = "scripts.download_data:main"
+ct-download-aux = "scripts.download_aux_data:main"
+ct-backtest     = "scripts.run_backtest:main"
+ct-paper        = "scripts.run_paper:main"
+ct-live         = "scripts.run_live:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -20,6 +20,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+import pandas as pd
 from nautilus_trader.model.data import Bar
 from nautilus_trader.indicators.averages import ExponentialMovingAverage
 from nautilus_trader.indicators.trend import MovingAverageConvergenceDivergence
@@ -261,25 +262,51 @@ class VolumeMomentumFactor(Factor):
 # ── Factor Engine ─────────────────────────────────────────────────────────────
 
 class FactorEngine:
-    """Combines multiple factors into a single composite signal."""
+    """Combines multiple factors into a single composite signal.
+
+    An optional trend-regime filter (a long-period EMA) gates entries so that
+    longs are only taken while price trades above the regime EMA and shorts only
+    below it. This removes most counter-trend whipsaw — the single biggest source
+    of losing trades for crossover/oscillator factors.
+    """
 
     def __init__(
         self,
         factors: list[Factor],
         long_threshold: float = 0.3,
         short_threshold: float = -0.3,
+        trend_ema_period: int = 0,
     ) -> None:
         self.factors = factors
         self.long_threshold = long_threshold
         self.short_threshold = short_threshold
+        self._trend_ema = (
+            ExponentialMovingAverage(trend_ema_period) if trend_ema_period > 0 else None
+        )
+        self._last_close: float = 0.0
 
     @property
     def is_initialized(self) -> bool:
-        return all(f.is_initialized for f in self.factors)
+        factors_ready = all(f.is_initialized for f in self.factors)
+        regime_ready = self._trend_ema is None or self._trend_ema.initialized
+        return factors_ready and regime_ready
 
     def update(self, bar: Bar) -> None:
+        self._last_close = bar.close.as_double()
+        if self._trend_ema is not None:
+            self._trend_ema.update_raw(self._last_close)
         for f in self.factors:
             f.update(bar)
+
+    def _regime_allows_long(self) -> bool:
+        if self._trend_ema is None:
+            return True
+        return self._last_close >= self._trend_ema.value
+
+    def _regime_allows_short(self) -> bool:
+        if self._trend_ema is None:
+            return True
+        return self._last_close <= self._trend_ema.value
 
     def composite_score(self) -> float:
         total_weight = sum(abs(f.weight) for f in self.factors if f.is_initialized)
@@ -295,10 +322,129 @@ class FactorEngine:
         return [f.to_signal() for f in self.factors]
 
     def is_long(self) -> bool:
-        return self.is_initialized and self.composite_score() >= self.long_threshold
+        return (
+            self.is_initialized
+            and self.composite_score() >= self.long_threshold
+            and self._regime_allows_long()
+        )
 
     def is_short(self) -> bool:
-        return self.is_initialized and self.composite_score() <= self.short_threshold
+        return (
+            self.is_initialized
+            and self.composite_score() <= self.short_threshold
+            and self._regime_allows_short()
+        )
 
     def is_neutral(self) -> bool:
         return not self.is_long() and not self.is_short()
+
+
+# ── Auxiliary data-backed factors ─────────────────────────────────────────────
+
+class FundingRateFactor(Factor):
+    """Perpetual swap funding rate as a contrarian sentiment signal.
+
+    Logic (contrarian):
+      High positive funding → longs crowded → bearish  (score → -1)
+      High negative funding → shorts crowded → bullish (score → +1)
+      Neutral (~0)         → score = 0
+
+    score = -clamp(rate / threshold, -1, +1)
+    Default threshold 0.0003 means a funding rate of 0.03%/8h maps to ±1.
+    """
+
+    def __init__(
+        self,
+        data: pd.Series | None,
+        threshold: float = 0.0003,
+        weight: float = 1.0,
+    ) -> None:
+        super().__init__("FUNDING_RATE", weight)
+        self._threshold = threshold
+        self._current_rate: float = 0.0
+        self._score_series: pd.Series | None = None
+        self._ready: bool = False
+
+        if data is not None and not data.empty:
+            # Precompute score series for fast asof lookup during backtesting
+            clipped = (-data / threshold).clip(-1.0, 1.0)
+            self._score_series = clipped
+            self._ready = True
+
+    @property
+    def is_initialized(self) -> bool:
+        return self._ready
+
+    def update(self, bar: Bar) -> None:
+        if self._score_series is None:
+            return
+        ts = pd.Timestamp(bar.ts_event, unit="ns", tz="UTC")
+        val = self._score_series.asof(ts)
+        if pd.notna(val):
+            self._current_rate = float(val)
+
+    def score(self) -> float:
+        return self._current_rate
+
+    def set_rate(self, rate: float) -> None:
+        """Live trading: inject current funding rate directly."""
+        if self._threshold != 0:
+            self._current_rate = max(-1.0, min(1.0, -rate / self._threshold))
+        self._ready = True
+
+
+class LongShortRatioFactor(Factor):
+    """Account-level long/short ratio as a contrarian sentiment signal.
+
+    Uses a rolling z-score to normalise across recent history, then negates
+    (contrarian): z-score above 0 (many longs) → bearish, below 0 → bullish.
+
+    score = -clamp(z_score / 2, -1, +1)   (z=2 → max score)
+    """
+
+    def __init__(
+        self,
+        data: pd.Series | None,
+        zscore_window: int = 48,   # 48 × 1H ≈ 2 days of look-back
+        weight: float = 1.0,
+    ) -> None:
+        super().__init__("LS_RATIO", weight)
+        self._current_score: float = 0.0
+        self._score_series: pd.Series | None = None
+        self._ready: bool = False
+
+        if data is not None and not data.empty:
+            min_periods = max(1, zscore_window // 4)
+            roll_mean = data.rolling(zscore_window, min_periods=min_periods).mean()
+            roll_std = (
+                data.rolling(zscore_window, min_periods=min_periods)
+                .std()
+                .replace(0.0, float("nan"))
+                .fillna(1e-9)
+            )
+            z = (data - roll_mean) / roll_std
+            # Contrarian: negate z, scale so z=±2 → score=±1
+            self._score_series = (-z / 2.0).clip(-1.0, 1.0)
+            self._ready = True
+
+    @property
+    def is_initialized(self) -> bool:
+        return self._ready
+
+    def update(self, bar: Bar) -> None:
+        if self._score_series is None:
+            return
+        ts = pd.Timestamp(bar.ts_event, unit="ns", tz="UTC")
+        val = self._score_series.asof(ts)
+        if pd.notna(val):
+            self._current_score = float(val)
+
+    def score(self) -> float:
+        return self._current_score
+
+    def set_ratio(self, ratio: float, rolling_mean: float, rolling_std: float) -> None:
+        """Live trading: inject the current ratio with its rolling statistics."""
+        if rolling_std > 0:
+            z = (ratio - rolling_mean) / rolling_std
+            self._current_score = max(-1.0, min(1.0, -z / 2.0))
+        self._ready = True

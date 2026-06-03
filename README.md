@@ -60,7 +60,9 @@ python scripts/run_backtest.py --config config/backtest.yaml
 
 # 覆盖时间范围
 python scripts/run_backtest.py --config config/backtest.yaml \
-  --start 2024-06-01 --end 2024-12-31
+    --start 2025-01-01 --end 2026-06-01 \
+    --timeframe 1m \
+    --balance 50000
 
 # 切换策略：编辑 config/backtest.yaml 中的 strategy 部分
 ```
@@ -207,6 +209,31 @@ docker compose logs -f paper-trader
 # 启动实盘（需 --profile live）
 docker compose --profile live up -d live-trader
 ```
+
+## 回测绩效指标说明
+
+回测结束后输出的绩效指标含义如下：
+
+| 指标 | 含义 |
+|------|------|
+| `total_return_pct` | 整个回测期间的总收益率（%），负值代表亏损 |
+| `total_pnl` | 总盈亏金额（USDT），正为盈利，负为亏损 |
+| `sharpe_ratio` | 夏普比率：风险调整后收益。>1 合格，>2 优秀，负值说明还不如持有无风险资产 |
+| `sortino_ratio` | 索提诺比率：只惩罚下行波动的夏普变体，对亏损波动更敏感，通常比夏普比率更严苛 |
+| `profit_factor` | 总盈利 / 总亏损。>1 才能长期盈利，=0.97 意味着每亏 1 元只赚回 0.97 元 |
+| `win_rate` | 盈利交易占总交易次数的比例。需结合盈亏比一起看，胜率低但盈亏比高也可以盈利 |
+| `avg_winner` | 盈利交易的平均每笔收益（USDT） |
+| `avg_loser` | 亏损交易的平均每笔亏损（USDT，通常为负数） |
+| `expectancy` | 每笔交易的期望收益 = `win_rate × avg_winner + (1 - win_rate) × avg_loser`，正值才代表策略长期可盈利 |
+| `total_orders` | 回测期间总下单次数 |
+
+**保本胜率公式**（盈亏比固定时的最低胜率要求）：
+
+```
+保本胜率 = |avg_loser| / (avg_winner + |avg_loser|)
+```
+
+例如 `avg_winner=18.56`，`avg_loser=-9.01`，则保本胜率 ≈ **32.6%**，实际胜率需高于此值策略才能盈利。
 
 ## 运行测试
 

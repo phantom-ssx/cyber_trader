@@ -32,10 +32,15 @@ class BaseStrategyConfig(StrategyConfig, frozen=True):
     take_profit_pct: float = 0.04
     max_drawdown_pct: float = 0.15
     max_daily_loss_pct: float = 0.05
+    drawdown_cooldown_bars: int = 30
 
     # Factor thresholds
     long_threshold: float = 0.3
     short_threshold: float = -0.3
+
+    # Trend-regime filter: only take longs above / shorts below this EMA.
+    # 0 disables the filter.
+    trend_ema_period: int = 0
 
     # Enable Feishu notifications (only in paper/live mode)
     enable_notifications: bool = True
@@ -63,6 +68,7 @@ class BaseStrategy(Strategy):
             take_profit_pct=config.take_profit_pct,
             max_drawdown_pct=config.max_drawdown_pct,
             max_daily_loss_pct=config.max_daily_loss_pct,
+            drawdown_cooldown_bars=config.drawdown_cooldown_bars,
         )
         self._risk = RiskManager(risk_cfg)
 
@@ -119,16 +125,16 @@ class BaseStrategy(Strategy):
         if not self._factor_engine.is_initialized:
             return
 
-        self._update_risk_equity()
+        self._update_risk_equity(bar)
         self._process_signal(bar)
 
-    def _update_risk_equity(self) -> None:
+    def _update_risk_equity(self, bar: Bar) -> None:
         account = self.cache.account_for_venue(self._instrument_id.venue)
         if account:
             currency = Currency.from_str(self.cfg.currency)
             equity = float(account.balance_total(currency).as_double())
             self._risk.init_equity(equity)
-            self._risk.update_equity(equity)
+            self._risk.update_equity(equity, bar.ts_event)
 
     def _process_signal(self, bar: Bar) -> None:
         score = self._factor_engine.composite_score()

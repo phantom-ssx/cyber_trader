@@ -25,7 +25,11 @@ class RiskConfig:
 
     # Daily / drawdown limits
     max_daily_loss_pct: float = 0.05      # 5% daily loss limit
-    max_drawdown_pct: float = 0.15        # 15% max drawdown before shutdown
+    max_drawdown_pct: float = 0.15        # 15% max drawdown → circuit breaker
+
+    # When the drawdown breaker trips, pause for this many bars then reset the
+    # equity peak and resume (instead of halting the strategy forever).
+    drawdown_cooldown_bars: int = 30
 
     # Cooldown after loss
     loss_cooldown_bars: int = 0           # bars to skip after a losing trade (0=disabled)
@@ -40,6 +44,8 @@ class RiskManager:
         self._daily_start_equity: float = 0.0
         self._losses_today: float = 0.0
         self._cooldown_remaining: int = 0
+        self._dd_cooldown_remaining: int = 0
+        self._current_day: int | None = None
         self._wins: int = 0
         self._losses: int = 0
         self._total_pnl: float = 0.0
@@ -49,8 +55,18 @@ class RiskManager:
             self._peak_equity = equity
             self._daily_start_equity = equity
 
-    def update_equity(self, equity: float) -> None:
+    def update_equity(self, equity: float, ts_event: int | None = None) -> None:
         self._peak_equity = max(self._peak_equity, equity)
+        # Roll the daily-loss reference at each UTC day boundary so the daily
+        # loss gate is genuinely *daily* (otherwise it measures loss since
+        # inception and permanently freezes the strategy after one bad stretch).
+        if ts_event is not None:
+            day = ts_event // 86_400_000_000_000  # ns → day index
+            if self._current_day is None:
+                self._current_day = day
+            elif day != self._current_day:
+                self._current_day = day
+                self._daily_start_equity = equity
 
     # ── Position sizing ───────────────────────────────────────────────────────
 
@@ -93,9 +109,20 @@ class RiskManager:
             self._cooldown_remaining -= 1
             return False, f"cooldown ({self._cooldown_remaining} bars left)"
 
+        # Drawdown circuit breaker: pause for a cooldown then reset the peak so
+        # the strategy can recover, rather than freezing for the whole run.
+        if self._dd_cooldown_remaining > 0:
+            self._dd_cooldown_remaining -= 1
+            if self._dd_cooldown_remaining == 0:
+                self._peak_equity = equity  # reset reference after the pause
+            return False, f"drawdown cooldown ({self._dd_cooldown_remaining} bars left)"
+
         drawdown = (self._peak_equity - equity) / self._peak_equity if self._peak_equity > 0 else 0.0
         if drawdown >= self.cfg.max_drawdown_pct:
-            return False, f"max drawdown reached ({drawdown:.1%})"
+            self._dd_cooldown_remaining = self.cfg.drawdown_cooldown_bars
+            if self._dd_cooldown_remaining == 0:
+                self._peak_equity = equity
+            return False, f"max drawdown reached ({drawdown:.1%}) → pausing"
 
         daily_loss = (
             (self._daily_start_equity - equity) / self._daily_start_equity
