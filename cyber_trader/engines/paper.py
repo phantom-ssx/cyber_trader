@@ -12,6 +12,7 @@ from nautilus_trader.adapters.okx.factories import (
     OKXLiveDataClientFactory,
     OKXLiveExecClientFactory,
 )
+from nautilus_trader.common.config import InstrumentProviderConfig
 from nautilus_trader.config import (
     ImportableStrategyConfig,
     LiveDataEngineConfig,
@@ -20,6 +21,7 @@ from nautilus_trader.config import (
     LoggingConfig,
     TradingNodeConfig,
 )
+from nautilus_trader.core.nautilus_pyo3.okx import OKXEnvironment, OKXInstrumentType
 from nautilus_trader.live.node import TradingNode
 
 from cyber_trader.config import get_settings
@@ -55,18 +57,27 @@ class PaperRunner:
         strat_kwargs = dict(cfg.strategy_config)
         strat_kwargs.setdefault("enable_notifications", True)
 
+        instrument_ids = cfg.instrument_ids
+        instrument_provider = InstrumentProviderConfig(
+            load_ids=frozenset(instrument_ids),
+        )
+
         data_client_config = OKXDataClientConfig(
             api_key=settings.okx_api_key,
             api_secret=settings.okx_api_secret,
-            passphrase=settings.okx_passphrase,
-            is_demo=True,                    # OKX demo environment
+            api_passphrase=settings.okx_passphrase,
+            instrument_types=(OKXInstrumentType.SWAP,),
+            instrument_provider=instrument_provider,
+            environment=OKXEnvironment.DEMO,
         )
 
         exec_client_config = OKXExecClientConfig(
             api_key=settings.okx_api_key,
             api_secret=settings.okx_api_secret,
-            passphrase=settings.okx_passphrase,
-            is_demo=True,
+            api_passphrase=settings.okx_passphrase,
+            instrument_types=(OKXInstrumentType.SWAP,),
+            instrument_provider=instrument_provider,
+            environment=OKXEnvironment.DEMO,
         )
 
         node_config = TradingNodeConfig(
@@ -97,8 +108,17 @@ class PaperRunner:
         node.build()
         return node
 
+    def _export_env(self) -> None:
+        import os
+        s = self._settings
+        os.environ.setdefault("OKX_API_KEY", s.okx_api_key)
+        os.environ.setdefault("OKX_API_SECRET", s.okx_api_secret)
+        os.environ.setdefault("OKX_API_PASSPHRASE", s.okx_passphrase)
+        os.environ["OKX_IS_DEMO"] = "true"  # paper trading always uses demo
+
     def run(self, cfg: PaperConfig) -> None:
         logger.info("Starting paper trading (OKX demo)")
+        self._export_env()
         node = self.build_node(cfg)
         try:
             node.run()

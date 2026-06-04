@@ -22,9 +22,9 @@ class Settings(BaseSettings):
     okx_passphrase: str = ""
     okx_is_demo: bool = False
 
-    # ── Feishu ────────────────────────────────────────────────────────────────
-    feishu_webhook_url: str = ""
-    feishu_secret: str = ""
+    # ── Bark ──────────────────────────────────────────────────────────────────
+    bark_key: str = ""
+    bark_server: str = "https://api.day.app"
 
     # ── Data ─────────────────────────────────────────────────────────────────
     data_catalog_path: Path = Path("./data/catalog")

@@ -1,3 +1,3 @@
-from .feishu import FeishuNotifier
+from .bark import BarkNotifier
 
-__all__ = ["FeishuNotifier"]
+__all__ = ["BarkNotifier"]

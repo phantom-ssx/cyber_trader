@@ -6,9 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "cyber-trader"
 version = "0.1.0"
 description = "Quantitative crypto trading system based on nautilus_trader (OKX, ETH/BTC futures)"
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.15"
 dependencies = [
-    "nautilus_trader>=1.208.0",
+    "nautilus_trader>=1.227.0",
     "ccxt>=4.3.0",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",

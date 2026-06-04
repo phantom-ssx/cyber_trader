@@ -4,16 +4,16 @@
 
 ## 功能
 
-| 功能 | 说明 |
-|------|------|
+| 功能 | 说明                                            |
+|------|-----------------------------------------------|
 | 数据下载 | 通过 ccxt 从 OKX 下载历史 OHLCV，写入本地 Parquet catalog |
-| 回测 | nautilus_trader BacktestNode，支持滑点/延迟模拟 |
-| 模拟盘 | 连接 OKX demo 环境，真实行情 + 虚拟撮合 |
-| 实盘 | 连接 OKX 主网，需 `--confirm` 二次确认 |
-| 飞书通知 | 入场信号 + 绩效指标推送到飞书群机器人 |
-| 多因子 | EMA 交叉 / MACD / RSI / 布林带 / 动量 / 量价动量 |
-| 风控 | 仓位百分比、止损/止盈、最大回撤、日亏损限额 |
-| K 线可视化 | mplfinance 绘制 K 线 + EMA + MACD，输出高清 PNG |
+| 回测 | nautilus_trader BacktestNode，支持滑点/延迟模拟        |
+| 模拟盘 | 连接 OKX demo 环境，真实行情 + 虚拟撮合                    |
+| 实盘 | 连接 OKX 主网，需 `--confirm` 二次确认                  |
+| Bark 通知 | 入场信号 + 量化指标推送到 iOS Bark App                   |
+| 多因子 | EMA 交叉 / MACD / RSI / 布林带 / 动量 / 量价动量         |
+| 风控 | 仓位百分比、止损/止盈、最大回撤、日亏损限额                        |
+| K 线可视化 | mplfinance 绘制 K 线 + EMA + MACD，输出高清 PNG       |
 
 ## 快速开始
 
@@ -33,7 +33,7 @@ pip install mplfinance
 ```bash
 cp .env.example .env
 # 填写 OKX API Key / Secret / Passphrase
-# 填写飞书 Webhook URL（可选）
+# 填写 Bark Device Key（可选，用于 iOS 推送通知）
 ```
 
 ### 3. 下载历史数据
@@ -118,7 +118,7 @@ cyber_trader/
 │   ├── indicators/     # 多因子引擎（6个内置因子）
 │   ├── strategies/     # 三类策略 + 抽象基类
 │   ├── risk/           # 风控管理（仓位/止损/回撤）
-│   ├── notifications/  # 飞书 Webhook
+│   ├── notifications/  # Bark 推送通知
 │   └── engines/        # 回测 / 模拟盘 / 实盘 引擎
 ├── scripts/            # CLI 入口（download / backtest / paper / live / plot_kline）
 ├── config/             # YAML 配置文件

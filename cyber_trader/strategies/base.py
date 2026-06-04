@@ -1,4 +1,4 @@
-"""Base strategy with multi-factor engine, risk management and Feishu notifications."""
+"""Base strategy with multi-factor engine, risk management and Bark notifications."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from nautilus_trader.trading.strategy import Strategy
 
 from cyber_trader.config import get_settings
 from cyber_trader.indicators.factor_engine import FactorEngine
-from cyber_trader.notifications.feishu import FeishuNotifier, TradeSignal
+from cyber_trader.notifications.bark import BarkNotifier, TradeSignal
 from cyber_trader.risk.manager import RiskConfig, RiskManager
 
 
@@ -42,7 +42,7 @@ class BaseStrategyConfig(StrategyConfig, frozen=True):
     # 0 disables the filter.
     trend_ema_period: int = 0
 
-    # Enable Feishu notifications (only in paper/live mode)
+    # Enable Bark notifications (only in paper/live mode)
     enable_notifications: bool = True
 
     # Number of historical bars to fetch on startup for indicator warm-up (0 = disabled)
@@ -76,9 +76,9 @@ class BaseStrategy(Strategy):
         self._risk = RiskManager(risk_cfg)
 
         settings = get_settings()
-        self._notifier: FeishuNotifier | None = (
-            FeishuNotifier(settings.feishu_webhook_url, settings.feishu_secret)
-            if config.enable_notifications and settings.feishu_webhook_url
+        self._notifier: BarkNotifier | None = (
+            BarkNotifier(settings.bark_key, settings.bark_server)
+            if config.enable_notifications and settings.bark_key
             else None
         )
 
@@ -116,7 +116,9 @@ class BaseStrategy(Strategy):
         """Fetch historical bars from OKX and pre-feed them to initialize indicators."""
         from cyber_trader.data.okx_downloader import fetch_recent_bars_sync
 
+        import os
         settings = get_settings()
+        is_demo = os.environ.get("OKX_IS_DEMO", "").lower() in ("1", "true") or settings.okx_is_demo
         logger.info(
             f"[{self.id}] Warming up indicators with {self.cfg.warmup_bars} historical bars "
             f"({self._instrument_id} {self._bar_type})"
@@ -129,6 +131,7 @@ class BaseStrategy(Strategy):
                 api_key=settings.okx_api_key,
                 api_secret=settings.okx_api_secret,
                 passphrase=settings.okx_passphrase,
+                is_demo=is_demo,
             )
             for bar in bars:
                 if self._factor_engine is not None:

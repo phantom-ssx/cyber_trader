@@ -10,6 +10,7 @@ from typing import Any, Type
 import pandas as pd
 from loguru import logger
 from nautilus_trader.backtest.node import BacktestNode
+from nautilus_trader.backtest.config import ImportableFeeModelConfig
 from nautilus_trader.config import (
     BacktestDataConfig,
     BacktestEngineConfig,
@@ -105,6 +106,11 @@ class BacktestRunner:
                     oms_type=OmsType.NETTING,
                     account_type=AccountType.MARGIN,
                     starting_balances=[f"{cfg.starting_balance} {cfg.currency}"],
+                    fee_model=ImportableFeeModelConfig(
+                        fee_model_path="nautilus_trader.backtest.models:MakerTakerFeeModel",
+                        config_path="nautilus_trader.backtest.config:MakerTakerFeeModelConfig",
+                        config={},
+                    ),
                 )
             ],
             data=[
