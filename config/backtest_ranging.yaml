@@ -1,0 +1,61 @@
+# ─── Ranging / Mean-Reversion Backtest Configuration ─────────────────────────
+# For choppy, non-trending markets where price oscillates in a range.
+#
+# Run:
+#   python scripts/run_backtest.py --config config/backtest_ranging.yaml
+#   python scripts/run_backtest.py --config config/backtest_ranging.yaml --start 2026-01-01 --end 2026-06-01
+#
+# When to use this strategy:
+#   ADX(14) ≤ 25  →  use this file  (ranging market)
+#   ADX(14) > 25  →  use backtest.yaml (trend-following)
+
+backtest:
+  instrument_id: "ETH-USDT-SWAP.OKX"
+  timeframe: "4h"
+
+  start: "2026-01-01"
+  end: "2026-06-01"
+
+  venue: "OKX"
+  starting_balance: 10000.0
+  currency: "USDT"
+
+  fill_model_slippage_factor: 0.0001
+  log_level: "WARNING"
+
+strategy:
+  path: "cyber_trader.strategies.mean_reversion:MeanReversionStrategy"
+  config_path: "cyber_trader.strategies.mean_reversion:MeanReversionConfig"
+  params:
+    # Bollinger Bands: 20-period mean, 2-sigma bands
+    bb_period: 20
+    bb_k: 2.0
+
+    # RSI: 14-period, oversold < 35, overbought > 65
+    rsi_period: 14
+
+    # Factor weights
+    bb_weight: 0.6
+    rsi_weight: 0.4
+
+    # Entry only at strong extremes (0.4 = both BB and RSI must confirm)
+    long_threshold: 0.40
+    short_threshold: -0.40
+
+    # Risk — tighter stop than trend strategy:
+    # if price moves 2.5% against a mean-reversion entry, trend may have resumed.
+    risk_per_trade: 0.01
+    stop_loss_pct: 0.025
+    take_profit_pct: 0.03
+    leverage: 1.0
+    max_position_pct: 0.25
+    drawdown_cooldown_bars: 20
+
+    # ADX gate: block entries when ADX > 20 (market is trending, not ranging)
+    # ADX ≤ 20 is the standard "no trend" zone — strictest ranging filter.
+    adx_period: 14
+    adx_threshold: 20.0
+
+    # Exit when score drops to 10% of entry threshold (price ~90% back to mid-band).
+    # 0.0 = wait for full reversion; 1.0 = exit as soon as entry threshold crossed.
+    exit_threshold_ratio: 0.1

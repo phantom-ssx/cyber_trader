@@ -34,6 +34,11 @@ class TrendFollowingConfig(BaseStrategyConfig, frozen=True):
     # Trend-regime filter EMA (only trade with the dominant trend)
     trend_ema_period: int = 200
 
+    # ADX regime gate: block all entries when ADX ≤ adx_threshold (choppy market)
+    # Set adx_period=0 to disable. Typical values: period=14, threshold=20.
+    adx_period: int = 14
+    adx_threshold: float = 20.0
+
     # Deploy more capital per signal than the ultra-conservative 10% default,
     # while staying well within margin so the drawdown breaker isn't tripped.
     max_position_pct: float = 0.30
@@ -103,4 +108,6 @@ class TrendFollowingStrategy(BaseStrategy):
             long_threshold=cfg.long_threshold,
             short_threshold=cfg.short_threshold,
             trend_ema_period=cfg.trend_ema_period,
+            adx_period=cfg.adx_period,
+            adx_threshold=cfg.adx_threshold,
         )

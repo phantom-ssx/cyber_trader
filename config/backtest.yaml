@@ -12,7 +12,7 @@ backtest:
   timeframe: "4h"
 
   # Time range (matches the downloaded ETH-USDT-SWAP data on disk)
-  start: "2025-01-01"
+  start: "2026-01-01"
   end: "2026-06-01"
 
   # Venue / account simulation
@@ -52,8 +52,11 @@ strategy:
     trend_ema_period: 200
     max_position_pct: 0.30
     drawdown_cooldown_bars: 30
-    funding_rate_weight: 0.2
-    long_short_ratio_weight: 0.2
+    funding_rate_weight: 0.0
+    long_short_ratio_weight: 0.0
+    # ADX market-regime gate: skip entries when ADX ≤ 20 (choppy/ranging market)
+    adx_period: 14
+    adx_threshold: 25.0
 
   # ── Mean Reversion (comment/uncomment to switch) ──
   # path: "cyber_trader.strategies.mean_reversion:MeanReversionStrategy"

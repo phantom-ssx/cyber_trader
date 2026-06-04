@@ -259,15 +259,111 @@ class VolumeMomentumFactor(Factor):
         return max(-1.0, min(1.0, price_direction * spike_score))
 
 
+# ── ADX regime filter ─────────────────────────────────────────────────────────
+
+class _ADXFilter:
+    """Wilder's Average Directional Index.
+
+    ADX > threshold → trending market (entries allowed).
+    ADX ≤ threshold → ranging/choppy market (entries blocked).
+    Threshold of 20 is the standard "no trend" cutoff.
+    """
+
+    def __init__(self, period: int = 14) -> None:
+        self._period = period
+        self._prev_high: float = 0.0
+        self._prev_low: float = 0.0
+        self._prev_close: float = 0.0
+
+        # Wilder-smoothed accumulators (initialised after first full period)
+        self._smooth_tr: float = 0.0
+        self._smooth_dm_plus: float = 0.0
+        self._smooth_dm_minus: float = 0.0
+
+        # First-period sums (before Wilder smoothing kicks in)
+        self._tr_sum: float = 0.0
+        self._dm_plus_sum: float = 0.0
+        self._dm_minus_sum: float = 0.0
+
+        # ADX itself needs another full period of DX values
+        self._dx_sum: float = 0.0
+        self._dx_count: int = 0
+        self._adx: float = 0.0
+
+        self._count: int = 0
+        self._initialized: bool = False
+
+    @property
+    def value(self) -> float:
+        return self._adx
+
+    @property
+    def initialized(self) -> bool:
+        return self._initialized
+
+    def update(self, high: float, low: float, close: float) -> None:
+        if self._count == 0:
+            self._prev_high = high
+            self._prev_low = low
+            self._prev_close = close
+            self._count += 1
+            return
+
+        tr = max(high - low, abs(high - self._prev_close), abs(low - self._prev_close))
+        up_move = high - self._prev_high
+        down_move = self._prev_low - low
+        dm_plus = up_move if (up_move > down_move and up_move > 0) else 0.0
+        dm_minus = down_move if (down_move > up_move and down_move > 0) else 0.0
+
+        self._count += 1
+
+        if self._count <= self._period:
+            # Accumulate raw sums for the seed period
+            self._tr_sum += tr
+            self._dm_plus_sum += dm_plus
+            self._dm_minus_sum += dm_minus
+            if self._count == self._period:
+                self._smooth_tr = self._tr_sum
+                self._smooth_dm_plus = self._dm_plus_sum
+                self._smooth_dm_minus = self._dm_minus_sum
+        else:
+            # Wilder smoothing: subtract 1/period of old value, add new value
+            self._smooth_tr = self._smooth_tr - self._smooth_tr / self._period + tr
+            self._smooth_dm_plus = self._smooth_dm_plus - self._smooth_dm_plus / self._period + dm_plus
+            self._smooth_dm_minus = self._smooth_dm_minus - self._smooth_dm_minus / self._period + dm_minus
+
+            if self._smooth_tr == 0:
+                dx = 0.0
+            else:
+                di_plus = 100.0 * self._smooth_dm_plus / self._smooth_tr
+                di_minus = 100.0 * self._smooth_dm_minus / self._smooth_tr
+                di_sum = di_plus + di_minus
+                dx = 100.0 * abs(di_plus - di_minus) / di_sum if di_sum != 0 else 0.0
+
+            if not self._initialized:
+                # Seed ADX with the average of the first `period` DX values
+                self._dx_sum += dx
+                self._dx_count += 1
+                if self._dx_count >= self._period:
+                    self._adx = self._dx_sum / self._dx_count
+                    self._initialized = True
+            else:
+                self._adx = (self._adx * (self._period - 1) + dx) / self._period
+
+        self._prev_high = high
+        self._prev_low = low
+        self._prev_close = close
+
+
 # ── Factor Engine ─────────────────────────────────────────────────────────────
 
 class FactorEngine:
     """Combines multiple factors into a single composite signal.
 
-    An optional trend-regime filter (a long-period EMA) gates entries so that
-    longs are only taken while price trades above the regime EMA and shorts only
-    below it. This removes most counter-trend whipsaw — the single biggest source
-    of losing trades for crossover/oscillator factors.
+    Two optional regime gates control when entries are allowed:
+    - trend_ema_period: price must be above EMA for longs / below for shorts.
+    - adx_period / adx_threshold: ADX must exceed threshold (market is trending);
+      when ADX ≤ threshold the market is ranging and all entries are blocked.
     """
 
     def __init__(
@@ -276,6 +372,9 @@ class FactorEngine:
         long_threshold: float = 0.3,
         short_threshold: float = -0.3,
         trend_ema_period: int = 0,
+        adx_period: int = 0,
+        adx_threshold: float = 20.0,
+        adx_below: bool = False,
     ) -> None:
         self.factors = factors
         self.long_threshold = long_threshold
@@ -283,18 +382,30 @@ class FactorEngine:
         self._trend_ema = (
             ExponentialMovingAverage(trend_ema_period) if trend_ema_period > 0 else None
         )
+        self._adx_filter = _ADXFilter(adx_period) if adx_period > 0 else None
+        self._adx_threshold = adx_threshold
+        # adx_below=True  → entries only when ADX ≤ threshold (ranging/mean-reversion mode)
+        # adx_below=False → entries only when ADX > threshold (trending mode, default)
+        self._adx_below = adx_below
         self._last_close: float = 0.0
 
     @property
     def is_initialized(self) -> bool:
         factors_ready = all(f.is_initialized for f in self.factors)
         regime_ready = self._trend_ema is None or self._trend_ema.initialized
-        return factors_ready and regime_ready
+        adx_ready = self._adx_filter is None or self._adx_filter.initialized
+        return factors_ready and regime_ready and adx_ready
 
     def update(self, bar: Bar) -> None:
         self._last_close = bar.close.as_double()
         if self._trend_ema is not None:
             self._trend_ema.update_raw(self._last_close)
+        if self._adx_filter is not None:
+            self._adx_filter.update(
+                bar.high.as_double(),
+                bar.low.as_double(),
+                self._last_close,
+            )
         for f in self.factors:
             f.update(bar)
 
@@ -307,6 +418,12 @@ class FactorEngine:
         if self._trend_ema is None:
             return True
         return self._last_close <= self._trend_ema.value
+
+    def _adx_allows_entry(self) -> bool:
+        if self._adx_filter is None or not self._adx_filter.initialized:
+            return True
+        adx = self._adx_filter.value
+        return adx <= self._adx_threshold if self._adx_below else adx > self._adx_threshold
 
     def composite_score(self) -> float:
         total_weight = sum(abs(f.weight) for f in self.factors if f.is_initialized)
@@ -326,6 +443,7 @@ class FactorEngine:
             self.is_initialized
             and self.composite_score() >= self.long_threshold
             and self._regime_allows_long()
+            and self._adx_allows_entry()
         )
 
     def is_short(self) -> bool:
@@ -333,6 +451,7 @@ class FactorEngine:
             self.is_initialized
             and self.composite_score() <= self.short_threshold
             and self._regime_allows_short()
+            and self._adx_allows_entry()
         )
 
     def is_neutral(self) -> bool:
