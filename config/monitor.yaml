@@ -1,0 +1,51 @@
+monitor:
+  instrument_ids:
+    - ETH-USDT-SWAP.OKX
+    - BTC-USDT-SWAP.OKX
+  bar_types:
+    - ETH-USDT-SWAP.OKX-1-MINUTE-LAST-EXTERNAL
+    - BTC-USDT-SWAP.OKX-1-MINUTE-LAST-EXTERNAL
+  log_level: INFO
+
+strategy:
+  path: "cyber_trader.monitors.volatility:VolatilityMonitor"
+  config_path: "cyber_trader.monitors.volatility:VolatilityMonitorConfig"
+  params:
+    instrument_ids:
+      - ETH-USDT-SWAP.OKX
+      - BTC-USDT-SWAP.OKX
+    bar_spec: "1-MINUTE-LAST-EXTERNAL"
+    cooldown_bars: 10
+    enable_notifications: true
+
+    # Default rules applied to all instruments
+    # Available types (see cyber_trader/monitors/rules.py):
+    #   single_bar   — single bar abs % change >= threshold_pct
+    #   cumulative   — sum of abs % changes over N bars >= threshold_pct
+    #   directional  — same-direction move >= threshold_pct over N bars
+    #   round_level  — price crosses a round-number grid boundary
+    rules_json: >-
+      [
+        {"type": "single_bar",  "threshold_pct": 0.5},
+        {"type": "cumulative",  "threshold_pct": 1.0, "bars": 5},
+        {"type": "directional", "threshold_pct": 0.8, "bars": 3}
+      ]
+
+    # Per-instrument rule overrides (merged on top of defaults)
+    # ETH alerts at every $100 level (2700, 2800, 2900, ...)
+    # BTC alerts at every $1000 level (90000, 91000, ...)
+    per_instrument_rules_json: >-
+      {
+        "ETH-USDT-SWAP.OKX": [
+          {"type": "single_bar",  "threshold_pct": 0.5},
+          {"type": "cumulative",  "threshold_pct": 1.0, "bars": 5},
+          {"type": "directional", "threshold_pct": 0.8, "bars": 3},
+          {"type": "round_level", "interval": 100}
+        ],
+        "BTC-USDT-SWAP.OKX": [
+          {"type": "single_bar",  "threshold_pct": 0.5},
+          {"type": "cumulative",  "threshold_pct": 1.0, "bars": 5},
+          {"type": "directional", "threshold_pct": 0.8, "bars": 3},
+          {"type": "round_level", "interval": 1000}
+        ]
+      }

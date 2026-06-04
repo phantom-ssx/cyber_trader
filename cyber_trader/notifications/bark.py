@@ -95,6 +95,9 @@ class BarkNotifier:
         )
         return self._post(title, body)
 
+    def send_volatility_alert(self, symbol: str, title: str, body: str) -> bool:
+        return self._post(title, body, group="CyberTrader-Monitor", level="timeSensitive")
+
     def send_text(self, text: str) -> bool:
         lines = text.strip().splitlines()
         title = lines[0] if lines else "CyberTrader"

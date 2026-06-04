@@ -10,7 +10,8 @@
 | 回测 | nautilus_trader BacktestNode，支持滑点/延迟模拟        |
 | 模拟盘 | 连接 OKX demo 环境，真实行情 + 虚拟撮合                    |
 | 实盘 | 连接 OKX 主网，需 `--confirm` 二次确认                  |
-| Bark 通知 | 入场信号 + 量化指标推送到 iOS Bark App                   |
+| Bark 通知 | 入场信号 + 量化指标 + 价格异动推送到 iOS Bark App          |
+| 价格监控 | 实时监控行情波动（单K线/累计/方向/整数关口），只读不下单           |
 | 多因子 | EMA 交叉 / MACD / RSI / 布林带 / 动量 / 量价动量         |
 | 风控 | 仓位百分比、止损/止盈、最大回撤、日亏损限额                        |
 | K 线可视化 | mplfinance 绘制 K 线 + EMA + MACD，输出高清 PNG       |
@@ -100,7 +101,86 @@ python scripts/plot_kline.py --bars 500 --out charts/eth.png
 python scripts/plot_kline.py --bar-type "ETH-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL" --bars 200
 ```
 
-### 8. Jupyter 分析
+### 8. 价格监控
+
+实时监控行情，当价格异动时通过 Bark 推送到 iOS。监控器只订阅行情数据，**不下任何订单**。
+
+```bash
+# 连接 OKX Demo 环境（默认）
+python scripts/run_monitor.py --config config/monitor.yaml
+
+# 连接 OKX 主网实时行情
+python scripts/run_monitor.py --config config/monitor.yaml --live
+```
+
+**监控规则类型（`config/monitor.yaml` 中 `rules_json` 配置）：**
+
+| 类型 | 说明 | 关键参数 |
+|------|------|----------|
+| `single_bar` | 单根 K 线涨跌幅 ≥ 阈值 | `threshold_pct` |
+| `cumulative` | N 根 K 线累计波动幅度之和 ≥ 阈值 | `threshold_pct`, `bars` |
+| `directional` | 连续 N 根 K 线同向运动总幅度 ≥ 阈值 | `threshold_pct`, `bars` |
+| `round_level` | 价格穿越整数关口（如 ETH 每 $100、BTC 每 $1000）| `interval` |
+
+**示例：自定义规则**
+
+```yaml
+# config/monitor.yaml
+strategy:
+  params:
+    cooldown_bars: 10          # 任意规则触发后，同品种冷却 N 根 K 线
+    rules_json: >-
+      [
+        {"type": "single_bar",  "threshold_pct": 0.5},
+        {"type": "cumulative",  "threshold_pct": 1.0, "bars": 5},
+        {"type": "directional", "threshold_pct": 0.8, "bars": 3}
+      ]
+    per_instrument_rules_json: >-
+      {
+        "ETH-USDT-SWAP.OKX": [
+          {"type": "round_level", "interval": 100}
+        ],
+        "BTC-USDT-SWAP.OKX": [
+          {"type": "round_level", "interval": 1000}
+        ]
+      }
+```
+
+> `per_instrument_rules_json` 中列出的品种使用**独立规则集**（完全替换默认规则），未列出的品种使用 `rules_json` 默认规则。
+
+**新增自定义规则**
+
+继承 `AlertRule`，实现 `window_size` 和 `evaluate()`，用 `@register_rule` 注册：
+
+```python
+from collections import deque
+from cyber_trader.monitors.rules import AlertRule, AlertResult, register_rule
+
+@register_rule("my_rule")
+class MyRule(AlertRule):
+    def __init__(self, threshold_pct: float = 1.0) -> None:
+        self.threshold_pct = threshold_pct
+
+    @property
+    def window_size(self) -> int:
+        return 2
+
+    def evaluate(self, closes: deque[float]) -> AlertResult | None:
+        prev, curr = list(closes)[-2], list(closes)[-1]
+        pct = abs(curr - prev) / prev * 100
+        if pct >= self.threshold_pct:
+            return AlertResult(
+                label="自定义异动",
+                pct=pct,
+                from_price=prev,
+                to_price=curr,
+                window_bars=1,
+                rising=curr > prev,
+            )
+        return None
+```
+
+### 9. Jupyter 分析
 
 ```bash
 jupyter notebook notebooks/backtest_analysis.ipynb
@@ -119,8 +199,9 @@ cyber_trader/
 │   ├── strategies/     # 三类策略 + 抽象基类
 │   ├── risk/           # 风控管理（仓位/止损/回撤）
 │   ├── notifications/  # Bark 推送通知
+│   ├── monitors/       # 价格监控（VolatilityMonitor + 四类告警规则）
 │   └── engines/        # 回测 / 模拟盘 / 实盘 引擎
-├── scripts/            # CLI 入口（download / backtest / paper / live / plot_kline）
+├── scripts/            # CLI 入口（download / backtest / paper / live / plot_kline / run_monitor）
 ├── config/             # YAML 配置文件
 ├── notebooks/          # Jupyter 分析
 ├── tests/              # 单元测试
