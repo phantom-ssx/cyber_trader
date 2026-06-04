@@ -45,6 +45,9 @@ class BaseStrategyConfig(StrategyConfig, frozen=True):
     # Enable Feishu notifications (only in paper/live mode)
     enable_notifications: bool = True
 
+    # Number of historical bars to fetch on startup for indicator warm-up (0 = disabled)
+    warmup_bars: int = 300
+
 
 class BaseStrategy(Strategy):
     """
@@ -96,6 +99,9 @@ class BaseStrategy(Strategy):
         self._factor_engine.long_threshold = self.cfg.long_threshold
         self._factor_engine.short_threshold = self.cfg.short_threshold
 
+        if self.cfg.warmup_bars > 0:
+            self._warmup_indicators()
+
         self.subscribe_bars(self._bar_type)
         logger.info(f"[{self.id}] started on {self._instrument_id} bar_type={self._bar_type}")
 
@@ -104,6 +110,38 @@ class BaseStrategy(Strategy):
                 f"🚀 策略启动: {self.__class__.__name__}\n"
                 f"交易对: {self._instrument_id}\n"
                 f"周期: {self._bar_type}"
+            )
+
+    def _warmup_indicators(self) -> None:
+        """Fetch historical bars from OKX and pre-feed them to initialize indicators."""
+        from cyber_trader.data.okx_downloader import fetch_recent_bars_sync
+
+        settings = get_settings()
+        logger.info(
+            f"[{self.id}] Warming up indicators with {self.cfg.warmup_bars} historical bars "
+            f"({self._instrument_id} {self._bar_type})"
+        )
+        try:
+            bars = fetch_recent_bars_sync(
+                instrument_id_str=str(self._instrument_id),
+                bar_type_str=str(self._bar_type),
+                count=self.cfg.warmup_bars,
+                api_key=settings.okx_api_key,
+                api_secret=settings.okx_api_secret,
+                passphrase=settings.okx_passphrase,
+            )
+            for bar in bars:
+                if self._factor_engine is not None:
+                    self._factor_engine.update(bar)
+
+            initialized = self._factor_engine is not None and self._factor_engine.is_initialized
+            logger.info(
+                f"[{self.id}] Indicator warmup complete — {len(bars)} bars fed, "
+                f"initialized={initialized}"
+            )
+        except Exception as exc:
+            logger.warning(
+                f"[{self.id}] Indicator warmup failed (indicators will initialize on live bars): {exc}"
             )
 
     def on_stop(self) -> None:

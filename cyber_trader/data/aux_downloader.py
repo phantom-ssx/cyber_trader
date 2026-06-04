@@ -157,6 +157,9 @@ class OKXAuxDownloader:
     ) -> pd.Series:
         """Fetch account-level long/short ratio from OKX REST API.
 
+        Endpoint: /api/v5/rubik/stat/contracts/long-short-account-ratio
+        Uses ccy (base currency, e.g. "ETH") — not instId.
+
         Returns a pd.Series indexed by UTC timestamps, named 'long_short_ratio'.
         Ratio > 1 means more accounts are long; < 1 means more are short.
         """
@@ -171,16 +174,19 @@ class OKXAuxDownloader:
         end_ms = int(end_dt.timestamp() * 1000)
         start_ms = int(start_dt.timestamp() * 1000)
 
+        # Extract base currency: "ETH-USDT" → "ETH"
+        ccy = symbol.split("-")[0]
+
         url = f"{self.OKX_BASE}/api/v5/rubik/stat/contracts/long-short-account-ratio"
         records: list[tuple[int, float]] = []
         cursor_end = end_ms
 
-        logger.info(f"Fetching L/S ratio: {symbol} {start_dt.date()} → {end_dt.date()}")
+        logger.info(f"Fetching L/S ratio: {symbol} ({ccy}) {start_dt.date()} → {end_dt.date()}")
 
         async with httpx.AsyncClient(timeout=15) as client:
             while True:
                 params = {
-                    "instId": symbol,   # e.g. ETH-USDT (without -SWAP)
+                    "ccy": ccy,          # base currency, e.g. "ETH"
                     "period": period,
                     "end": str(cursor_end),
                     "limit": "100",

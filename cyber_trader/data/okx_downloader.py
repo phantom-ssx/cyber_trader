@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal
@@ -36,6 +37,24 @@ _TIMEFRAME_MAP: dict[str, tuple[BarAggregation, int]] = {
 }
 
 SUPPORTED_TIMEFRAMES = list(_TIMEFRAME_MAP.keys())
+
+# Reverse lookup: (BarAggregation, step) → OKX timeframe string
+_REVERSE_TF_MAP: dict[tuple[BarAggregation, int], str] = {v: k for k, v in _TIMEFRAME_MAP.items()}
+
+# Duration of each timeframe in milliseconds
+_TIMEFRAME_DURATION_MS: dict[str, int] = {
+    "1m": 60_000,
+    "3m": 180_000,
+    "5m": 300_000,
+    "15m": 900_000,
+    "30m": 1_800_000,
+    "1h": 3_600_000,
+    "2h": 7_200_000,
+    "4h": 14_400_000,
+    "6h": 21_600_000,
+    "12h": 43_200_000,
+    "1d": 86_400_000,
+}
 
 
 def timeframe_to_bar_type(instrument_id: str, timeframe: str) -> str:
@@ -156,6 +175,91 @@ def _ohlcv_to_bars(
             )
         )
     return bars
+
+
+def fetch_recent_bars_sync(
+    instrument_id_str: str,
+    bar_type_str: str,
+    count: int,
+    api_key: str = "",
+    api_secret: str = "",
+    passphrase: str = "",
+    is_demo: bool = False,
+) -> list[Bar]:
+    """Synchronously fetch the most recent `count` bars for indicator warm-up.
+
+    Does NOT write to the catalog — intended for cold-start initialization only.
+    Uses the ccxt synchronous API so it can be called from a non-async context.
+    """
+    import ccxt as _ccxt_sync  # sync version, separate from ccxt.async_support
+
+    bar_type = BarType.from_str(bar_type_str)
+    key = (bar_type.spec.aggregation, bar_type.spec.step)
+    timeframe = _REVERSE_TF_MAP.get(key)
+    if timeframe is None:
+        raise ValueError(f"Cannot map bar type '{bar_type_str}' to a supported OKX timeframe")
+
+    # Parse nautilus instrument_id → ccxt symbol + market type
+    name = instrument_id_str.split(".")[0]  # strip venue suffix ".OKX"
+    if name.endswith("-SWAP"):
+        base_sym = name[:-5]  # e.g. "ETH-USDT"
+        ccxt_symbol = base_sym.replace("-", "/") + ":USDT"
+        market_type: Literal["swap", "spot"] = "swap"
+    else:
+        base_sym = name
+        ccxt_symbol = name.replace("-", "/")
+        market_type = "spot"
+
+    options: dict = {"defaultType": market_type}
+    if is_demo:
+        options["sandboxMode"] = True
+
+    exchange = _ccxt_sync.okx({
+        "apiKey": api_key,
+        "secret": api_secret,
+        "password": passphrase,
+        "options": options,
+    })
+
+    meta = _INSTRUMENT_META.get(base_sym.split("-")[0], _INSTRUMENT_META["DEFAULT"])
+    bar_duration_ms = _TIMEFRAME_DURATION_MS[timeframe]
+
+    now_ms = int(time.time() * 1000)
+    since_ms = now_ms - (count + 5) * bar_duration_ms  # +5 buffer for incomplete candle
+    end_ms = now_ms
+
+    all_bars: list[Bar] = []
+    cursor = since_ms
+
+    while cursor < end_ms:
+        try:
+            ohlcv = exchange.fetch_ohlcv(
+                ccxt_symbol,
+                timeframe=timeframe,
+                since=cursor,
+                limit=300,
+            )
+        except Exception as exc:
+            logger.warning(f"Warmup fetch error at cursor={cursor}: {exc}")
+            break
+
+        if not ohlcv:
+            break
+
+        batch = _ohlcv_to_bars(ohlcv, bar_type, meta["price_precision"], meta["size_precision"])
+        all_bars.extend(batch)
+        cursor = ohlcv[-1][0] + 1
+
+        if len(ohlcv) < 300:
+            break
+
+    try:
+        exchange.close()
+    except Exception:
+        pass
+
+    logger.info(f"Fetched {len(all_bars)} warmup bars for {instrument_id_str} [{timeframe}]")
+    return all_bars[-count:] if len(all_bars) > count else all_bars
 
 
 class OKXDownloader:
