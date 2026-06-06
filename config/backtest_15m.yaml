@@ -41,10 +41,23 @@ strategy:
     ema_weight: 0.3
     stoch_weight: 0.2
 
+    # ── Entry thresholds ────────────────────────────────────────────────
+    # LONG: restore v1 threshold — LONG had net positive edge after commissions.
+    # SHORT: raised to -0.90. At any threshold tested, SHORT trades generate
+    # insufficient gross PnL to cover commissions ($25/trade at 25k position).
+    # At -0.65 we got 80 SHORT trades: gross $365, commission $1960, net -$1595.
+    # Setting -0.90 (near max score) leaves only rare ultra-strong shorts.
     long_threshold: 0.35
-    short_threshold: -0.35
-    signal_exit_long: -0.35
-    signal_exit_short: 0.35
+    short_threshold: -0.90
+
+    # ── Signal-based exit thresholds ────────────────────────────────────
+    # Slightly wider than v1 (±0.35) to reduce minor noise exits,
+    # but not so wide that losing positions run to full SL.
+    signal_exit_long: -0.42
+    signal_exit_short: 0.42
+
+    # min_hold_bars: 0  (disabled — blocks profitable early exits, causes
+    # trades that would exit at -0.3% to instead run to SL at -1.0%)
 
     # 15m ADX gate (still active alongside MTF)
     adx_period: 14
@@ -59,11 +72,13 @@ strategy:
 
     # ── Volume confirmation ──────────────────────────────────────────────
     vol_confirm_bars: 5
-    vol_confirm_factor: 0.8    # current bar volume must exceed 0.8× recent average
+    vol_confirm_factor: 1.0    # moderate filter, require at least average volume
+    vol_confirm_factor_long: -1.0   # -1 = same factor for both directions
 
     # ── ATR-based SL/TP ─────────────────────────────────────────────────
     atr_period: 14
-    atr_sl_mult: 1.5           # SL = entry ± ATR × 1.5
+    atr_sl_mult: 1.5           # restored — wider SL (2.0) made losses bigger without
+                               # reducing SL frequency, turning +0.98% avg loss into -1.36%
     atr_rr_ratio: 3.0          # TP = SL distance × 3.0  →  3:1 reward:risk
 
     # Fixed-% fallback (used if ATR not yet initialized)
@@ -73,7 +88,10 @@ strategy:
     # ── Risk ────────────────────────────────────────────────────────────
     risk_per_trade: 0.01
     leverage: 1.0
-    max_position_pct: 0.50
+    # Halved from 0.50 → 0.25. This cuts commissions from ~$13k to ~$6.5k.
+    # Gross PnL halves proportionally but commission saving exceeds lost edge
+    # only on the LONG side (+$2k net LONG vs -$90 net SHORT expected).
+    max_position_pct: 0.25
     max_drawdown_pct: 0.15
     max_daily_loss_pct: 0.05
     drawdown_cooldown_bars: 50

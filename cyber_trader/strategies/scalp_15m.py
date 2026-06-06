@@ -113,6 +113,12 @@ class Scalp15mConfig(BaseStrategyConfig, frozen=True):
     # ── Position sizing ──────────────────────────────────────────────────────
     max_position_pct: float = 0.25
 
+    # ── Hold time guard ──────────────────────────────────────────────────────
+    # Minimum bars to hold a position before allowing a SIGNAL-based exit.
+    # SL/TP exits are never blocked. Prevents paying double commission on
+    # entries that reverse immediately on noise.
+    min_hold_bars: int = 0
+
 
 class Scalp15mStrategy(BaseStrategy):
     """
@@ -151,6 +157,9 @@ class Scalp15mStrategy(BaseStrategy):
         # Trade log
         self._trades: list[_TradeRecord] = []
         self._open_trade: Optional[_TradeRecord] = None
+
+        # Hold time guard
+        self._bars_in_trade: int = 0
 
         # Diagnostic counters
         self._diag_bars: int = 0
@@ -262,6 +271,8 @@ class Scalp15mStrategy(BaseStrategy):
         # Primary 15m bar: update ATR and vol buffer before factor engine
         self._atr.update_raw(bar.high.as_double(), bar.low.as_double(), bar.close.as_double())
         self._vol_buf.append(bar.volume.as_double())
+        if self._net_position() != 0:
+            self._bars_in_trade += 1
         super().on_bar(bar)
 
     def _handle_htf_bar(self, bar: Bar) -> None:
@@ -382,6 +393,7 @@ class Scalp15mStrategy(BaseStrategy):
     def _enter_long(self, bar: Bar, score: float, equity: float) -> None:
         self._entry_price = bar.close.as_double()
         self._entry_is_long = True
+        self._bars_in_trade = 0
         self._sl_price, self._tp_price = self._compute_sl_tp(self._entry_price, True)
         self._open_trade = self._make_trade_record("LONG", bar, score)
         logger.debug(
@@ -393,6 +405,7 @@ class Scalp15mStrategy(BaseStrategy):
     def _enter_short(self, bar: Bar, score: float, equity: float) -> None:
         self._entry_price = bar.close.as_double()
         self._entry_is_long = False
+        self._bars_in_trade = 0
         self._sl_price, self._tp_price = self._compute_sl_tp(self._entry_price, False)
         self._open_trade = self._make_trade_record("SHORT", bar, score)
         logger.debug(
@@ -421,22 +434,26 @@ class Scalp15mStrategy(BaseStrategy):
             if self._entry_is_long:
                 if price <= self._sl_price:
                     logger.info(f"[{self.id}] SL @ {price:.4f} (entry={self._entry_price:.4f})")
+                    self._bars_in_trade = 0
                     self._record_exit(bar, price, "SL")
                     self._exit_position(bar, score)
                     return
                 if price >= self._tp_price:
                     logger.info(f"[{self.id}] TP @ {price:.4f} (entry={self._entry_price:.4f})")
+                    self._bars_in_trade = 0
                     self._record_exit(bar, price, "TP")
                     self._exit_position(bar, score)
                     return
             else:
                 if price >= self._sl_price:
                     logger.info(f"[{self.id}] SL @ {price:.4f} (entry={self._entry_price:.4f})")
+                    self._bars_in_trade = 0
                     self._record_exit(bar, price, "SL")
                     self._exit_position(bar, score)
                     return
                 if price <= self._tp_price:
                     logger.info(f"[{self.id}] TP @ {price:.4f} (entry={self._entry_price:.4f})")
+                    self._bars_in_trade = 0
                     self._record_exit(bar, price, "TP")
                     self._exit_position(bar, score)
                     return
@@ -444,12 +461,20 @@ class Scalp15mStrategy(BaseStrategy):
         # ── Signal-based exit ─────────────────────────────────────────────────
         if net_qty != 0:
             cfg = self._s15_cfg
-            if (net_qty > 0 and score < cfg.signal_exit_long) or (
+            signal_exit_triggered = (net_qty > 0 and score < cfg.signal_exit_long) or (
                 net_qty < 0 and score > cfg.signal_exit_short
-            ):
-                self._record_exit(bar, price, "SIGNAL")
-                self._exit_position(bar, score)
-                net_qty = self._net_position()  # refresh; fall through to check reverse entry
+            )
+            if signal_exit_triggered:
+                if self._bars_in_trade < cfg.min_hold_bars:
+                    logger.debug(
+                        f"[{self.id}] Signal exit suppressed: only {self._bars_in_trade} bars "
+                        f"held (min={cfg.min_hold_bars})"
+                    )
+                else:
+                    self._bars_in_trade = 0
+                    self._record_exit(bar, price, "SIGNAL")
+                    self._exit_position(bar, score)
+                    net_qty = self._net_position()  # refresh; fall through to check reverse entry
 
         # ── Diagnostic: count raw score crossings before any gate ─────────────
         cfg = self._s15_cfg
