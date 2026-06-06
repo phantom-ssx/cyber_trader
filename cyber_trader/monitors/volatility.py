@@ -181,9 +181,9 @@ class VolatilityMonitor(Strategy):
         direction = "上涨" if result.rising else "下跌"
         signed_pct = f"+{result.pct:.2f}%" if result.rising else f"-{result.pct:.2f}%"
         _now = datetime.now().astimezone()
-_offset = _now.strftime("%z")  # e.g. "+0800"
-_tz = f"UTC{_offset[:3]}:{_offset[3:]}"  # e.g. "UTC+08:00"
-now = _now.strftime("%H:%M:%S") + f" ({_tz})"
+        _offset = _now.strftime("%z")  # e.g. "+0800"
+        _tz = f"UTC{_offset[:3]}:{_offset[3:]}"  # e.g. "UTC+08:00"
+        now = _now.strftime("%H:%M:%S") + f" ({_tz})"
 
         title = f"{arrow} {symbol}  {signed_pct}"
         body = (

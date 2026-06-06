@@ -26,9 +26,9 @@ strategy:
     #   round_level  — price crosses a round-number grid boundary
     rules_json: >-
       [
-        {"type": "single_bar",  "threshold_pct": 0.5},
-        {"type": "cumulative",  "threshold_pct": 1.0, "bars": 5},
-        {"type": "directional", "threshold_pct": 0.8, "bars": 3}
+          {"type": "single_bar",  "threshold_pct": 0.3},
+          {"type": "directional", "threshold_pct": 0.5, "bars": 3},
+          {"type": "cumulative",  "threshold_pct": 1.0, "bars": 5}
       ]
 
     # Per-instrument rule overrides (merged on top of defaults)
@@ -37,15 +37,15 @@ strategy:
     per_instrument_rules_json: >-
       {
         "ETH-USDT-SWAP.OKX": [
-          {"type": "single_bar",  "threshold_pct": 0.5},
+          {"type": "single_bar",  "threshold_pct": 0.3},
+          {"type": "directional", "threshold_pct": 0.5, "bars": 3},
           {"type": "cumulative",  "threshold_pct": 1.0, "bars": 5},
-          {"type": "directional", "threshold_pct": 0.8, "bars": 3},
           {"type": "round_level", "interval": 100}
         ],
         "BTC-USDT-SWAP.OKX": [
-          {"type": "single_bar",  "threshold_pct": 0.5},
+          {"type": "single_bar",  "threshold_pct": 0.3},
           {"type": "cumulative",  "threshold_pct": 1.0, "bars": 5},
-          {"type": "directional", "threshold_pct": 0.8, "bars": 3},
+          {"type": "directional", "threshold_pct": 0.5, "bars": 3},
           {"type": "round_level", "interval": 1000}
         ]
       }

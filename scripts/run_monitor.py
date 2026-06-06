@@ -47,8 +47,6 @@ def main(config: str, live: bool) -> None:
     strat = raw["strategy"]
 
     if live:
-        import os
-        os.environ.pop("OKX_IS_DEMO", None)
         logger.info("Connecting to OKX MAINNET for market data (no orders will be placed)")
     else:
         logger.info("Connecting to OKX DEMO for market data")
@@ -59,6 +57,7 @@ def main(config: str, live: bool) -> None:
         strategy_config=strat.get("params", {}),
         instrument_ids=mon.get("instrument_ids", []),
         bar_types=mon.get("bar_types", []),
+        is_demo=not live,
         log_level=mon.get("log_level", "INFO"),
     )
 

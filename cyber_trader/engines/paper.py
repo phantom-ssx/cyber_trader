@@ -38,6 +38,7 @@ class PaperConfig:
     instrument_ids: list[str]     # instruments to subscribe
     bar_types: list[str]          # bar types to subscribe
 
+    is_demo: bool = True
     log_level: str = "INFO"
 
 
@@ -53,6 +54,7 @@ class PaperRunner:
 
     def build_node(self, cfg: PaperConfig) -> TradingNode:
         settings = self._settings
+        okx_env = OKXEnvironment.DEMO if cfg.is_demo else OKXEnvironment.LIVE
 
         strat_kwargs = dict(cfg.strategy_config)
         strat_kwargs.setdefault("enable_notifications", True)
@@ -68,7 +70,7 @@ class PaperRunner:
             api_passphrase=settings.okx_passphrase,
             instrument_types=(OKXInstrumentType.SWAP,),
             instrument_provider=instrument_provider,
-            environment=OKXEnvironment.DEMO,
+            environment=okx_env,
         )
 
         exec_client_config = OKXExecClientConfig(
@@ -77,7 +79,7 @@ class PaperRunner:
             api_passphrase=settings.okx_passphrase,
             instrument_types=(OKXInstrumentType.SWAP,),
             instrument_provider=instrument_provider,
-            environment=OKXEnvironment.DEMO,
+            environment=okx_env,
         )
 
         node_config = TradingNodeConfig(
@@ -108,17 +110,18 @@ class PaperRunner:
         node.build()
         return node
 
-    def _export_env(self) -> None:
+    def _export_env(self, cfg: PaperConfig) -> None:
         import os
         s = self._settings
         os.environ.setdefault("OKX_API_KEY", s.okx_api_key)
         os.environ.setdefault("OKX_API_SECRET", s.okx_api_secret)
         os.environ.setdefault("OKX_API_PASSPHRASE", s.okx_passphrase)
-        os.environ["OKX_IS_DEMO"] = "true"  # paper trading always uses demo
+        os.environ["OKX_IS_DEMO"] = "true" if cfg.is_demo else "false"
 
     def run(self, cfg: PaperConfig) -> None:
-        logger.info("Starting paper trading (OKX demo)")
-        self._export_env()
+        env_label = "OKX demo" if cfg.is_demo else "OKX MAINNET"
+        logger.info(f"Starting paper trading ({env_label})")
+        self._export_env(cfg)
         node = self.build_node(cfg)
         try:
             node.run()
