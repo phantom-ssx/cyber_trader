@@ -1,0 +1,79 @@
+# ─── 15-minute Multi-Timeframe Scalp Backtest ────────────────────────────────
+# Run: python scripts/run_backtest.py --config config/backtest_15m.yaml
+#
+# Requires both 15m AND 1H bars in the catalog:
+#   python scripts/resample_bars.py --timeframes 15m
+#   python scripts/resample_bars.py --timeframes 1h
+
+backtest:
+  instrument_id: "ETH-USDT-SWAP.OKX"
+  timeframe: "15m"
+
+  # Also feed 1H bars for the multi-timeframe direction filter
+  higher_timeframes:
+    - "1h"
+
+  start: "2026-01-01"
+  end: "2026-06-01"
+
+  venue: "OKX"
+  starting_balance: 100000.0
+  currency: "USDT"
+
+  fill_model_slippage_factor: 0.0002
+  latency_model_base_secs: 0.001
+
+  log_level: "WARNING"
+
+strategy:
+  path: "cyber_trader.strategies.scalp_15m:Scalp15mStrategy"
+  config_path: "cyber_trader.strategies.scalp_15m:Scalp15mConfig"
+  params:
+    # ── 15m signal factors ──────────────────────────────────────────────
+    kc_period: 20
+    kc_k: 2.0
+    ema_fast: 9
+    ema_slow: 21
+    stoch_period_k: 14
+    stoch_period_d: 3
+
+    kc_weight: 0.5
+    ema_weight: 0.3
+    stoch_weight: 0.2
+
+    long_threshold: 0.35
+    short_threshold: -0.35
+    signal_exit_long: -0.35
+    signal_exit_short: 0.35
+
+    # 15m ADX gate (still active alongside MTF)
+    adx_period: 14
+    adx_threshold: 25.0
+    # trend_ema_period is auto-disabled (set to 0) when higher_tf_bar_type is set
+    trend_ema_period: 0
+
+    # ── Multi-Timeframe direction gate ──────────────────────────────────
+    # Must match an entry in backtest.higher_timeframes above
+    higher_tf_bar_type: "ETH-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL"
+    higher_tf_ema_period: 50   # 50H EMA ≈ 2 days — macro swing direction
+
+    # ── Volume confirmation ──────────────────────────────────────────────
+    vol_confirm_bars: 5
+    vol_confirm_factor: 0.8    # current bar volume must exceed 0.8× recent average
+
+    # ── ATR-based SL/TP ─────────────────────────────────────────────────
+    atr_period: 14
+    atr_sl_mult: 1.5           # SL = entry ± ATR × 1.5
+    atr_rr_ratio: 3.0          # TP = SL distance × 3.0  →  3:1 reward:risk
+
+    # Fixed-% fallback (used if ATR not yet initialized)
+    stop_loss_pct: 0.015
+    take_profit_pct: 0.045
+
+    # ── Risk ────────────────────────────────────────────────────────────
+    risk_per_trade: 0.01
+    leverage: 1.0
+    max_position_pct: 0.50
+    max_drawdown_pct: 0.15
+    max_daily_loss_pct: 0.05
+    drawdown_cooldown_bars: 50

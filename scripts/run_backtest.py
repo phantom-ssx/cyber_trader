@@ -59,6 +59,7 @@ def main(
         currency=bt.get("currency", "USDT"),
         fill_model_slippage_factor=bt.get("fill_model_slippage_factor", 0.0001),
         log_level=log_level or bt.get("log_level", "WARNING"),
+        higher_timeframes=bt.get("higher_timeframes", []),
     )
 
     runner = BacktestRunner()

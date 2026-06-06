@@ -53,8 +53,13 @@ class BacktestConfig:
 
     log_level: str = "WARNING"
 
+    # Optional additional timeframes to load for multi-timeframe strategies.
+    # e.g. ["1h"] will also feed 1H bars to the strategy's on_bar handler.
+    higher_timeframes: list[str] = field(default_factory=list)
+
     # Derived — set automatically in __post_init__
     bar_type: str = field(init=False)
+    higher_bar_types: list[str] = field(init=False)
 
     def __post_init__(self) -> None:
         if self.timeframe not in SUPPORTED_TIMEFRAMES:
@@ -63,6 +68,10 @@ class BacktestConfig:
                 f"Choose from: {SUPPORTED_TIMEFRAMES}"
             )
         self.bar_type = timeframe_to_bar_type(self.instrument_id, self.timeframe)
+        self.higher_bar_types = [
+            timeframe_to_bar_type(self.instrument_id, tf)
+            for tf in self.higher_timeframes
+        ]
 
 
 class BacktestRunner:
@@ -118,7 +127,7 @@ class BacktestRunner:
                     catalog_path=str(self._settings.data_catalog_path),
                     data_cls=Bar,
                     instrument_id=cfg.instrument_id,
-                    bar_types=[cfg.bar_type],
+                    bar_types=[cfg.bar_type] + cfg.higher_bar_types,
                     start_time=cfg.start,
                     end_time=cfg.end,
                 )

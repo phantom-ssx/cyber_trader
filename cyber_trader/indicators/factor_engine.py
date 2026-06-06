@@ -24,8 +24,8 @@ import pandas as pd
 from nautilus_trader.model.data import Bar
 from nautilus_trader.indicators.averages import ExponentialMovingAverage
 from nautilus_trader.indicators.trend import MovingAverageConvergenceDivergence
-from nautilus_trader.indicators.momentum import RelativeStrengthIndex
-from nautilus_trader.indicators.volatility import BollingerBands, AverageTrueRange
+from nautilus_trader.indicators.momentum import RelativeStrengthIndex, Stochastics
+from nautilus_trader.indicators.volatility import BollingerBands, AverageTrueRange, KeltnerChannel
 
 
 @dataclass(frozen=True)
@@ -257,6 +257,69 @@ class VolumeMomentumFactor(Factor):
         # Volume spike (>1x above average) weighted by price direction
         spike_score = min(1.0, (vol_ratio - 1.0) / 1.0)
         return max(-1.0, min(1.0, price_direction * spike_score))
+
+
+class KeltnerBreakoutFactor(Factor):
+    """Keltner Channel position: trend-following signal based on price vs. channel.
+
+    Price above middle → bullish (+score), below → bearish (-score).
+    At/above upper band → score ≈ +1 (strong breakout long).
+    At/below lower band → score ≈ -1 (strong breakout short).
+    """
+
+    def __init__(self, period: int = 20, k: float = 2.0, weight: float = 1.0) -> None:
+        super().__init__(f"KC_BREAK({period},{k})", weight)
+        self._kc = KeltnerChannel(period, k)
+        self._last_close: float = 0.0
+
+    @property
+    def is_initialized(self) -> bool:
+        return self._kc.initialized
+
+    def update(self, bar: Bar) -> None:
+        self._last_close = bar.close.as_double()
+        self._kc.update_raw(bar.high.as_double(), bar.low.as_double(), self._last_close)
+
+    def score(self) -> float:
+        if not self.is_initialized or self._last_close == 0.0:
+            return 0.0
+        upper = self._kc.upper
+        middle = self._kc.middle
+        lower = self._kc.lower
+        if self._last_close >= middle:
+            half = upper - middle
+            if half == 0:
+                return 0.0
+            return max(-1.0, min(1.0, (self._last_close - middle) / half))
+        else:
+            half = middle - lower
+            if half == 0:
+                return 0.0
+            return max(-1.0, min(1.0, (self._last_close - middle) / half))
+
+
+class StochasticFactor(Factor):
+    """Stochastic %K mapped to [-1, +1] as a trend-following momentum signal.
+
+    %K > 50 → bullish momentum (positive score).
+    %K < 50 → bearish momentum (negative score).
+    """
+
+    def __init__(self, period_k: int = 14, period_d: int = 3, weight: float = 1.0) -> None:
+        super().__init__(f"STOCH({period_k},{period_d})", weight)
+        self._stoch = Stochastics(period_k, period_d)
+
+    @property
+    def is_initialized(self) -> bool:
+        return self._stoch.initialized
+
+    def update(self, bar: Bar) -> None:
+        self._stoch.update_raw(bar.high.as_double(), bar.low.as_double(), bar.close.as_double())
+
+    def score(self) -> float:
+        if not self.is_initialized:
+            return 0.0
+        return max(-1.0, min(1.0, (self._stoch.value_k - 50.0) / 50.0))
 
 
 # ── ADX regime filter ─────────────────────────────────────────────────────────

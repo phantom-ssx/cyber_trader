@@ -152,6 +152,31 @@ def _make_instrument(
         )
 
 
+_MAX_WICK_RATIO = 1.05  # high must be within 5% above close; low within 5% below
+
+
+def _sanitize_bar(open_: float, high: float, low: float, close: float) -> tuple[float, float, float, float]:
+    """Clamp wick outliers caused by exchange data glitches.
+
+    A bar whose high exceeds close × MAX_WICK_RATIO or whose low is below
+    close / MAX_WICK_RATIO is almost certainly a bad tick (fat-finger, API
+    glitch, flash-spike). Cap high/low to ±5% of close so they cannot
+    poison exponential-smoothed indicators for weeks.
+    """
+    cap_high = close * _MAX_WICK_RATIO
+    cap_low  = close / _MAX_WICK_RATIO
+    if high > cap_high or low < cap_low:
+        logger.warning(
+            f"Anomalous bar detected — O={open_} H={high} L={low} C={close}. "
+            f"Clamping high to {min(high, cap_high):.2f}, low to {max(low, cap_low):.2f}."
+        )
+        high = min(high, cap_high)
+        low  = max(low,  cap_low)
+        # open must stay within [low, high]
+        open_ = max(low, min(open_, high))
+    return open_, high, low, close
+
+
 def _ohlcv_to_bars(
     ohlcv: list[list],
     bar_type: BarType,
@@ -161,6 +186,7 @@ def _ohlcv_to_bars(
     bars: list[Bar] = []
     for row in ohlcv:
         ts_ms, open_, high, low, close, volume = row[:6]
+        open_, high, low, close = _sanitize_bar(open_, high, low, close)
         ts_ns = int(ts_ms) * 1_000_000
         bars.append(
             Bar(

@@ -1,0 +1,65 @@
+# ─── 15-minute Multi-Timeframe Scalp Backtest — BTC ──────────────────────────
+# Run: python scripts/run_backtest.py --config config/backtest_15m_btc.yaml
+
+backtest:
+  instrument_id: "BTC-USDT-SWAP.OKX"
+  timeframe: "15m"
+
+  higher_timeframes:
+    - "1h"
+
+  start: "2026-01-01"
+  end: "2026-06-01"
+
+  venue: "OKX"
+  starting_balance: 10000.0
+  currency: "USDT"
+
+  fill_model_slippage_factor: 0.0002
+  latency_model_base_secs: 0.001
+
+  log_level: "WARNING"
+
+strategy:
+  path: "cyber_trader.strategies.scalp_15m:Scalp15mStrategy"
+  config_path: "cyber_trader.strategies.scalp_15m:Scalp15mConfig"
+  params:
+    kc_period: 20
+    kc_k: 2.0
+    ema_fast: 8
+    ema_slow: 21
+    stoch_period_k: 14
+    stoch_period_d: 3
+
+    kc_weight: 0.5
+    ema_weight: 0.3
+    stoch_weight: 0.2
+
+    long_threshold: 0.35
+    short_threshold: -0.35
+    signal_exit_long: -0.35
+    signal_exit_short: 0.35
+
+    adx_period: 14
+    adx_threshold: 25.0
+    trend_ema_period: 0
+
+    higher_tf_bar_type: "BTC-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL"
+    higher_tf_ema_period: 50
+
+    vol_confirm_bars: 5
+    vol_confirm_factor: 1.2
+
+    atr_period: 14
+    atr_sl_mult: 1.5
+    atr_rr_ratio: 3.0
+
+    stop_loss_pct: 0.015
+    take_profit_pct: 0.045
+
+    risk_per_trade: 0.01
+    leverage: 1.0
+    max_position_pct: 0.25
+    max_drawdown_pct: 0.15
+    max_daily_loss_pct: 0.05
+    drawdown_cooldown_bars: 50
