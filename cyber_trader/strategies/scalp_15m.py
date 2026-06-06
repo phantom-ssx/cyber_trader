@@ -66,6 +66,7 @@ class Scalp15mConfig(BaseStrategyConfig, frozen=True):
     ema_slow: int = 21
     stoch_period_k: int = 14
     stoch_period_d: int = 3
+    stoch_slowing: int = 1
 
     kc_weight: float = 0.5
     ema_weight: float = 0.3
@@ -119,6 +120,13 @@ class Scalp15mConfig(BaseStrategyConfig, frozen=True):
     # entries that reverse immediately on noise.
     min_hold_bars: int = 0
 
+    # ── KC position filter for shorts ────────────────────────────────────────
+    # Only allow SHORT entry when KC score >= this value.
+    # KC=-1 = price at lower Keltner band (bounce zone, wrong place to short).
+    # -0.30 requires price near or above the midline before shorting.
+    # Default -1.0 = disabled.
+    kc_short_min: float = -1.0
+
 
 class Scalp15mStrategy(BaseStrategy):
     """
@@ -168,6 +176,7 @@ class Scalp15mStrategy(BaseStrategy):
         self._diag_adx_blocked: int = 0
         self._diag_htf_blocked: int = 0
         self._diag_vol_blocked: int = 0
+        self._diag_kc_blocked: int = 0
         self._diag_entered: int = 0
 
     # ── Life cycle ────────────────────────────────────────────────────────────
@@ -192,6 +201,7 @@ class Scalp15mStrategy(BaseStrategy):
             f"  Blocked by ADX      : {self._diag_adx_blocked}\n"
             f"  Blocked by HTF EMA  : {self._diag_htf_blocked}\n"
             f"  Blocked by Volume   : {self._diag_vol_blocked}\n"
+            f"  Blocked by KC pos   : {self._diag_kc_blocked}\n"
             f"  Actually entered    : {self._diag_entered}\n"
             f"  Pass rate           : "
             f"{self._diag_entered / max(1, self._diag_score_long + self._diag_score_short):.1%}"
@@ -295,6 +305,7 @@ class Scalp15mStrategy(BaseStrategy):
                 StochasticFactor(
                     period_k=cfg.stoch_period_k,
                     period_d=cfg.stoch_period_d,
+                    slowing=cfg.stoch_slowing,
                     weight=cfg.stoch_weight,
                 ),
             ],
@@ -516,6 +527,16 @@ class Scalp15mStrategy(BaseStrategy):
                 logger.debug(f"[{self.id}] Short blocked: low volume")
                 self._diag_vol_blocked += 1
                 return
+            if cfg.kc_short_min > -1.0:
+                kc_score = self._factor_engine.factor_scores().get(
+                    f"KC_BREAK({cfg.kc_period},{cfg.kc_k})", -1.0
+                )
+                if kc_score < cfg.kc_short_min:
+                    logger.debug(
+                        f"[{self.id}] Short blocked: KC={kc_score:.3f} < min {cfg.kc_short_min}"
+                    )
+                    self._diag_kc_blocked += 1
+                    return
             if not allowed:
                 logger.debug(f"[{self.id}] Short blocked: {reason}")
                 return

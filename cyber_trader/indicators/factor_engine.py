@@ -305,9 +305,9 @@ class StochasticFactor(Factor):
     %K < 50 → bearish momentum (negative score).
     """
 
-    def __init__(self, period_k: int = 14, period_d: int = 3, weight: float = 1.0) -> None:
-        super().__init__(f"STOCH({period_k},{period_d})", weight)
-        self._stoch = Stochastics(period_k, period_d)
+    def __init__(self, period_k: int = 14, period_d: int = 3, slowing: int = 3, weight: float = 1.0) -> None:
+        super().__init__(f"STOCH({period_k},{period_d},{slowing})", weight)
+        self._stoch = Stochastics(period_k, period_d, slowing)
 
     @property
     def is_initialized(self) -> bool:

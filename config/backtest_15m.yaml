@@ -36,19 +36,19 @@ strategy:
     ema_slow: 21
     stoch_period_k: 14
     stoch_period_d: 3
+    stoch_slowing: 1   # Fast Stochastics; nautilus default. slowing=3/5 tested, both worse.
 
     kc_weight: 0.5
     ema_weight: 0.3
     stoch_weight: 0.2
 
     # ── Entry thresholds ────────────────────────────────────────────────
-    # LONG: restore v1 threshold — LONG had net positive edge after commissions.
-    # SHORT: raised to -0.90. At any threshold tested, SHORT trades generate
-    # insufficient gross PnL to cover commissions ($25/trade at 25k position).
-    # At -0.65 we got 80 SHORT trades: gross $365, commission $1960, net -$1595.
-    # Setting -0.90 (near max score) leaves only rare ultra-strong shorts.
     long_threshold: 0.35
-    short_threshold: -0.90
+    short_threshold: -0.90   # effectively LONG-only pending direction-specific weight refactor
+
+    # KC position filter for shorts: block entry when KC < -0.30
+    # (price in the lower Keltner band, a dead-cat bounce zone).
+    kc_short_min: -0.30
 
     # ── Signal-based exit thresholds ────────────────────────────────────
     # Slightly wider than v1 (±0.35) to reduce minor noise exits,
