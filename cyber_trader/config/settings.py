@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     okx_passphrase: str = ""
     okx_is_demo: bool = False
 
+    # ── Coinglass ─────────────────────────────────────────────────────────────
+    coinglass_api_key: str = ""
+
     # ── Bark ──────────────────────────────────────────────────────────────────
     bark_key: str = ""
     bark_server: str = "https://api.day.app"
