@@ -1,0 +1,84 @@
+# ─── 15-minute Mean-Reversion Backtest (v2) ───────────────────────────────────
+# Fixes vs v1:
+#   1. MTF 1H EMA(50) direction gate — no longs in bear market, no shorts in bull
+#   2. RSI period 14 (not 9) — prevents saturation in slow trends
+#   3. Entry threshold raised 0.40 → 0.50 — fewer but higher-quality signals
+#
+# Run: python scripts/run_backtest.py --config config/backtest_15m_mr.yaml
+#
+# Requires both 15m AND 1H bars in the catalog:
+#   python scripts/resample_bars.py --timeframes 15m
+#   python scripts/resample_bars.py --timeframes 1h
+
+backtest:
+  instrument_id: "ETH-USDT-SWAP.OKX"
+  timeframe: "15m"
+
+  higher_timeframes:
+    - "1h"
+
+  start: "2026-01-01"
+  end: "2026-06-01"
+
+  venue: "OKX"
+  starting_balance: 100000.0
+  currency: "USDT"
+
+  fill_model_slippage_factor: 0.0002
+  latency_model_base_secs: 0.001
+
+  log_level: "WARNING"
+
+strategy:
+  path: "cyber_trader.strategies.mr_15m:MR15mStrategy"
+  config_path: "cyber_trader.strategies.mr_15m:MR15mConfig"
+  params:
+    # ── Bollinger Bands ─────────────────────────────────────────────────────
+    bb_period: 20
+    bb_k: 2.0
+    bb_weight: 0.45
+
+    # ── RSI (14 avoids saturation; 9 locks at +0.99 in slow downtrends) ────
+    rsi_period: 14
+    rsi_weight: 0.35
+
+    # ── Stochastic mean-reversion ───────────────────────────────────────────
+    stoch_period_k: 14
+    stoch_period_d: 3
+    stoch_slowing: 3
+    stoch_weight: 0.20
+
+    # ── Entry thresholds ────────────────────────────────────────────────────
+    # short_threshold set to -0.25: the composite score max short is ~-0.29,
+    # driven entirely by RSI+Stoch exhaustion (BB lags the bounce).
+    long_threshold: 2.0
+    short_threshold: -0.25
+    # 0.0 = 关闭信号中轨出场，完全依赖 SL/TP/MaxHold，让均值回归充分完成
+    exit_threshold_ratio: 0.0
+
+    # ── ADX ranging gate ────────────────────────────────────────────────────
+    adx_period: 14
+    adx_threshold: 25.0
+
+    # ── Multi-Timeframe direction gate ──────────────────────────────────────
+    higher_tf_bar_type: "ETH-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL"
+    higher_tf_ema_period: 50
+
+    # ── ATR SL/TP ───────────────────────────────────────────────────────────
+    atr_period: 14
+    atr_sl_mult: 0.5    # 极紧止损：和 15m 信号自然回归幅度（10-15点）匹配
+    atr_rr_ratio: 2.0   # TP = SL×2（30点），覆盖最大均值回归
+
+    stop_loss_pct: 0.015
+    take_profit_pct: 0.030
+
+    # ── Max hold guard ──────────────────────────────────────────────────────
+    max_hold_bars: 32
+
+    # ── Risk ────────────────────────────────────────────────────────────────
+    risk_per_trade: 0.01
+    leverage: 1.0
+    max_position_pct: 0.25
+    max_drawdown_pct: 0.15
+    max_daily_loss_pct: 0.05
+    drawdown_cooldown_bars: 50

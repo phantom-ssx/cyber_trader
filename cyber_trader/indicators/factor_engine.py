@@ -158,9 +158,10 @@ class RSIFactor(Factor):
     def score(self) -> float:
         if not self.is_initialized:
             return 0.0
+        # nautilus RelativeStrengthIndex.value is in [0, 1] (not [0, 100])
+        # 0.5 = neutral; 0.3 → +0.4 (oversold, long); 0.7 → -0.4 (overbought, short)
         rsi = self._rsi.value
-        # RSI 50 = neutral; 30 = oversold (+1); 70 = overbought (-1)
-        return max(-1.0, min(1.0, (50 - rsi) / 50))
+        return max(-1.0, min(1.0, (0.5 - rsi) / 0.5))
 
 
 class BollingerFactor(Factor):
@@ -320,6 +321,35 @@ class StochasticFactor(Factor):
         if not self.is_initialized:
             return 0.0
         return max(-1.0, min(1.0, (self._stoch.value_k - 50.0) / 50.0))
+
+
+class StochasticMRFactor(Factor):
+    """Stochastic %K as a mean-reversion (contrarian) signal.
+
+    Inverts the trend-following Stochastic: deep oversold → +1 (long),
+    deep overbought → -1 (short). Softens near 50 using a non-linear
+    sharpening so the score is near 0 in the 30-70 neutral zone and
+    accelerates toward ±1 only in genuine extreme territory.
+
+    score = -clamp((K - 50) / 50, -1, +1)
+    """
+
+    def __init__(self, period_k: int = 14, period_d: int = 3, slowing: int = 3, weight: float = 1.0) -> None:
+        super().__init__(f"STOCH_MR({period_k},{period_d},{slowing})", weight)
+        self._stoch = Stochastics(period_k, period_d, slowing)
+
+    @property
+    def is_initialized(self) -> bool:
+        return self._stoch.initialized
+
+    def update(self, bar: Bar) -> None:
+        self._stoch.update_raw(bar.high.as_double(), bar.low.as_double(), bar.close.as_double())
+
+    def score(self) -> float:
+        if not self.is_initialized:
+            return 0.0
+        # Contrarian: oversold (%K < 50) → positive (long), overbought → negative
+        return max(-1.0, min(1.0, (50.0 - self._stoch.value_k) / 50.0))
 
 
 # ── ADX regime filter ─────────────────────────────────────────────────────────
