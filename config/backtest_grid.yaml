@@ -1,0 +1,69 @@
+# ─── Grid Trading Backtest ────────────────────────────────────────────────────
+# Run: python scripts/run_backtest.py --config config/backtest_grid.yaml
+#
+# Requires 1H bars in catalog:
+#   python scripts/resample_bars.py --timeframes 1h
+#
+# Three grid modes (uncomment the desired strategy block):
+#
+#   neutral — BUY below + SELL above; pure oscillation profit; rebalances in
+#             either direction. Best for sideways / ranging markets.
+#
+#   bull    — Only BUY orders initially; fills generate SELLs one level up.
+#             Net long bias. Only rebalances when price drops through the floor.
+#             Best when expecting uptrend with oscillation.
+#
+#   bear    — Only SELL orders initially; fills generate BUYs one level down.
+#             Net short/cash bias. Only rebalances when price rises through ceiling.
+#             Best when expecting downtrend with oscillation.
+
+backtest:
+  instrument_id: "ETH-USDT-SWAP.OKX"
+  timeframe: "1h"
+
+  start: "2026-01-01"
+  end: "2026-06-01"
+
+  venue: "OKX"
+  starting_balance: 10000.0
+  currency: "USDT"
+
+  fill_model_slippage_factor: 0.0002
+  latency_model_base_secs: 0.001
+
+  log_level: "WARNING"
+
+# ── Neutral Grid ──────────────────────────────────────────────────────────────
+strategy:
+  path: "cyber_trader.strategies.grid:GridStrategy"
+  config_path: "cyber_trader.strategies.grid:GridStrategyConfig"
+  params:
+    mode: "neutral"
+    grid_spacing_pct: 0.01
+    num_levels: 5
+    order_size_usdt: 200.0
+    rebalance_threshold_pct: 0.08
+
+# ── Bull Grid (comment neutral above, uncomment this) ────────────────────────
+# strategy:
+#   path: "cyber_trader.strategies.grid:GridStrategy"
+#   config_path: "cyber_trader.strategies.grid:GridStrategyConfig"
+#   params:
+#     mode: "bull"
+#     grid_spacing_pct: 0.01
+#     num_levels: 5
+#     order_size_usdt: 200.0
+#     # Only triggers when price drops >8% below the grid center
+#     rebalance_threshold_pct: 0.08
+
+# ── Bear Grid (comment neutral above, uncomment this) ────────────────────────
+# strategy:
+#   path: "cyber_trader.strategies.grid:GridStrategy"
+#   config_path: "cyber_trader.strategies.grid:GridStrategyConfig"
+#   params:
+#     mode: "bear"
+#     grid_spacing_pct: 0.01
+#     num_levels: 5
+#     order_size_usdt: 200.0
+#     # Only triggers when price rises >8% above the grid center
+#     rebalance_threshold_pct: 0.08
