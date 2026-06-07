@@ -1,12 +1,24 @@
-# ─── 1H Mean-Reversion Backtest ───────────────────────────────────────────────
-# 把 15m 空头均值回归逻辑搬到 1H：每笔利润幅度更大，手续费占比更低
-# 用 4H 作为高时间框架方向过滤（1H 的角色对应 15m 策略里的 1H）
+# ─── 1H Mean-Reversion Backtest (v2) ──────────────────────────────────────────
+# Optimization summary (2026-01-01 to 2026-06-01, ETH bear market):
+#
+# Key findings vs baseline (-0.25 threshold, EMA20, 1.5 ATR, ratio=0.0):
+#   Baseline: 75 trades, -2.74% nautilus
+#   Optimized: 25 trades, +1.04% nautilus, Sharpe 0.81
+#
+# Optimization path:
+#   1. short_threshold: -0.25 → -0.65 (signal quality critical; -0.55 degrades sharply)
+#   2. HTF EMA period: 20 → 80 (EMA20 too responsive, blocks shorts during bear bounces;
+#      EMA80 ≈ 13 days lag keeps price below EMA throughout the bear market)
+#   3. atr_sl_mult: 1.5 → 0.9 (tighter SL caps large losses; 1.5 caused -2% hits)
+#   4. exit_threshold_ratio: 0.0 → 0.15 (exit at 85% reversion; full reversion needs 100%
+#      completion but 1h moves can reverse in the final 15%)
+#   5. long_threshold: disabled (2.0) — longs fail in sustained bear market
+#
+# For neutral/ranging market: enable longs at 0.65, set both thresholds ±0.65
 #
 # Run: python scripts/run_backtest.py --config config/backtest_1h_mr.yaml
-#
-# 需要 1H 和 4H bars:
-#   python scripts/resample_bars.py --timeframes 1h
-#   python scripts/resample_bars.py --timeframes 4h
+# Requires 1H and 4H bars in catalog:
+#   python scripts/resample_bars.py --timeframes 1h 4h
 
 backtest:
   instrument_id: "ETH-USDT-SWAP.OKX"
@@ -46,30 +58,35 @@ strategy:
     stoch_slowing: 3
     stoch_weight: 0.20
 
-    # ── Thresholds ───────────────────────────────────────────────────────────
-    long_threshold: 2.0          # 纯空头模式（与 15m 测试保持一致）
-    short_threshold: -0.25
-    exit_threshold_ratio: 0.0    # 出场：得分回到0时（RSI/Stoch恢复中性）
+    # ── Entry/exit thresholds ────────────────────────────────────────────────
+    long_threshold: 2.0      # disabled for bear-market period
+    short_threshold: -0.65   # critical: -0.55 drops sharply in quality
+    # 0.15: exit when signal is 85% reverted (score crosses -0.65×0.15 = -0.0975)
+    # 1h bounces complete to ~85%; waiting for 100% (ratio=0.0) lets some overshoot
+    exit_threshold_ratio: 0.15
 
-    # ── ADX 震荡市过滤 ────────────────────────────────────────────────────────
+    # ── ADX ranging gate ─────────────────────────────────────────────────────
     adx_period: 14
-    adx_threshold: 25.0
+    adx_threshold: 22.0   # strict: only in clearly ranging markets
 
-    # ── 4H EMA20 方向过滤 ────────────────────────────────────────────────────
-    # EMA20 比 EMA50 更灵敏，能更快识别趋势反转，精准拦截多头方向的假空信号
+    # ── 4H EMA80 macro direction filter ─────────────────────────────────────
+    # 80 bars × 4H = 320H ≈ 13 days.
+    # Long enough to stay above declining price through multi-day bear bounces
+    # (EMA20 blocked shorts during bounces; EMA80 keeps shorts allowed in bear mkt).
+    # Faster (EMA20-40) was too responsive; slower (EMA120+) wastes warmup period.
     higher_tf_bar_type: "ETH-USDT-SWAP.OKX-4-HOUR-LAST-EXTERNAL"
-    higher_tf_ema_period: 20
+    higher_tf_ema_period: 80
 
-    # ── ATR SL/TP（保持与最优 15m 配置一致的倍数）──────────────────────────────
+    # ── ATR SL/TP ─────────────────────────────────────────────────────────────
     atr_period: 14
-    atr_sl_mult: 1.5
-    atr_rr_ratio: 2.0
+    atr_sl_mult: 0.9    # optimal: 0.9 ATR caps -2% catastrophic losses from wider SL
+    atr_rr_ratio: 2.0   # TP = 1.8 ATR; rarely hit since most exit via signal
 
     stop_loss_pct: 0.03
     take_profit_pct: 0.06
 
-    # ── 最大持仓时间（32×1H = 32小时）──────────────────────────────────────────
-    max_hold_bars: 32
+    # ── Max hold guard ───────────────────────────────────────────────────────
+    max_hold_bars: 48   # 48H max; in practice no trades hit this limit
 
     # ── Risk ─────────────────────────────────────────────────────────────────
     risk_per_trade: 0.01

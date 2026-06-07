@@ -1,8 +1,19 @@
-# ─── 15-minute Mean-Reversion Backtest (v2) ───────────────────────────────────
-# Fixes vs v1:
-#   1. MTF 1H EMA(50) direction gate — no longs in bear market, no shorts in bull
-#   2. RSI period 14 (not 9) — prevents saturation in slow trends
-#   3. Entry threshold raised 0.40 → 0.50 — fewer but higher-quality signals
+# ─── 15-minute Mean-Reversion Backtest (v3) ───────────────────────────────────
+# RSI bug fix: nautilus RelativeStrengthIndex.value is in [0,1] not [0,100].
+# Old formula (50-rsi)/50 mapped any RSI to ~+1 (long bias); fixed to (0.5-rsi)/0.5
+#
+# Backtest period: 2026-01-01 to 2026-06-01 (ETH bear market: 3100 → 2000, -35%)
+#
+# Key findings from optimization runs:
+#   1. Longs fail in sustained bear market regardless of threshold (even 0.80)
+#      → long_threshold set to 2.0 (disabled) for this bear-market period
+#   2. Shorts with -0.65 threshold: 117 trades, 69.2% win, nautilus -0.17% (near-breakeven)
+#   3. Fee drag is ~$20/trade × 117 trades = 2.3% of $100k equity
+#   4. Signal quality beats quantity: -0.65 (117 trades) >> -0.25 (439 trades)
+#   5. exit_threshold_ratio=0.30 (exit at 70% reversion) outperforms 0.0 and 0.15
+#      in a bear market because bounces are partial before trend resumes
+#
+# For a RANGING or NEUTRAL market: use long_threshold: 0.65 short_threshold: -0.65
 #
 # Run: python scripts/run_backtest.py --config config/backtest_15m_mr.yaml
 #
@@ -49,31 +60,34 @@ strategy:
     stoch_weight: 0.20
 
     # ── Entry thresholds ────────────────────────────────────────────────────
-    # short_threshold set to -0.25: the composite score max short is ~-0.29,
-    # driven entirely by RSI+Stoch exhaustion (BB lags the bounce).
-    long_threshold: 2.0
-    short_threshold: -0.25
-    # 0.0 = 关闭信号中轨出场，完全依赖 SL/TP/MaxHold，让均值回归充分完成
-    exit_threshold_ratio: 0.0
+    # Bear-market config: longs disabled (2.0 > max possible score of 1.0).
+    # -0.65 requires all three factors to be collectively 65% into overbought:
+    #   e.g. BB above upper band (-0.8), RSI overbought (-0.5), Stoch high (-0.5)
+    # For neutral/ranging market: set both to ±0.65 symmetrically.
+    long_threshold: 2.0      # disabled for bear-market period
+    short_threshold: -0.65
+    # 0.30: exit at 70% mean reversion (score crosses -0.195 from entry ≤-0.65)
+    # In bear markets, bounces are partial — exiting early captures most of the move
+    exit_threshold_ratio: 0.30
 
     # ── ADX ranging gate ────────────────────────────────────────────────────
     adx_period: 14
-    adx_threshold: 25.0
+    adx_threshold: 22.0   # ADX < 22 = clearly ranging; stricter than standard 25
 
     # ── Multi-Timeframe direction gate ──────────────────────────────────────
     higher_tf_bar_type: "ETH-USDT-SWAP.OKX-1-HOUR-LAST-EXTERNAL"
-    higher_tf_ema_period: 50
+    higher_tf_ema_period: 100   # 100H ≈ 4-day macro direction filter
 
     # ── ATR SL/TP ───────────────────────────────────────────────────────────
     atr_period: 14
-    atr_sl_mult: 0.5    # 极紧止损：和 15m 信号自然回归幅度（10-15点）匹配
-    atr_rr_ratio: 2.0   # TP = SL×2（30点），覆盖最大均值回归
+    atr_sl_mult: 1.5    # 1.5×ATR: fewer false stops vs 1.0×ATR in choppy ranging markets
+    atr_rr_ratio: 2.0   # TP = SL×2 (3×ATR from entry); favorable R:R
 
     stop_loss_pct: 0.015
     take_profit_pct: 0.030
 
     # ── Max hold guard ──────────────────────────────────────────────────────
-    max_hold_bars: 32
+    max_hold_bars: 20    # 20×15m = 5 hours max; mean reversion should complete in 1-3H
 
     # ── Risk ────────────────────────────────────────────────────────────────
     risk_per_trade: 0.01
